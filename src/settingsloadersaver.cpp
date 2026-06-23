@@ -488,8 +488,8 @@ void SettingsLoaderSaver::loadSettings() {
     else if (!setting.compare("avgspeed")) {
       size_t split = value.find('$');
       std::string sitename = value.substr(0, split);
-      int avgspeed = std::stoi(value.substr(split + 1));
-      site->setAverageSpeed(sitename, avgspeed);
+      unsigned long long int avgspeed = std::stoull(value.substr(split + 1));
+      site->setAverageSpeed(sitename, avgspeed * 1000);
     }
     else if (!setting.compare("affil")) {
       site->addAffil(value);
@@ -984,12 +984,12 @@ void SettingsLoaderSaver::saveSettings() {
       for (sit = site->sectionsBegin(); sit != site->sectionsEnd(); sit++) {
         dfh->addOutputLine(filetag, name + "$section=" + sit->first + "$" + sit->second.toString());
       }
-      std::map<std::string, int>::const_iterator sit2;
+      std::map<std::string, unsigned long long int>::const_iterator sit2;
       for (sit2 = site->avgspeedBegin(); sit2 != site->avgspeedEnd(); sit2++) {
         if (!global->getSiteManager()->getSite(sit2->first)) {
           continue;
         }
-        dfh->addOutputLine(filetag, name + "$avgspeed=" + sit2->first + "$" + std::to_string(sit2->second));
+        dfh->addOutputLine(filetag, name + "$avgspeed=" + sit2->first + "$" + std::to_string(sit2->second / 1000));
       }
       if (site->getSizeUp().getLast24Hours()) {
         dfh->addOutputLine(filetag, name + "$sizeup24=" + trackerHoursToString(site->getSizeUp()));

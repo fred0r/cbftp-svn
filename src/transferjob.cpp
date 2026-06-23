@@ -675,10 +675,10 @@ void TransferJob::updateStatus() {
     milliprogress = (1000 * sizeprogress) / expectedfinalsize;
   }
   if (timespentmillis) {
-    speed = sizeprogress / timespentmillis;
+    speed = sizeprogress * 1000 / timespentmillis;
   }
   if (speed) {
-    timeremaining = (expectedfinalsize - sizeprogress) / (speed * 1024);
+    timeremaining = (expectedfinalsize - sizeprogress) / speed;
   }
   filesprogress = filescompleted.size();
   int filesexistingorcompleted = util::merge(existingtargets, filescompleted).size();

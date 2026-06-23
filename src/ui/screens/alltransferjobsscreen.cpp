@@ -614,7 +614,7 @@ void AllTransferJobsScreen::addJobDetails(unsigned int y, MenuSelectOption & mso
                              " / " + util::parseSize(tj->totalSize());
   std::string filesprogress = std::to_string(tj->filesProgress()) + "/" +
                               std::to_string(tj->filesTotal());
-  std::string speed = started ? util::parseSize(tj->getSpeed() * SIZEPOWER) + "/s" : "-";
+  std::string speed = started ? util::parseSize(tj->getSpeed()) + "/s" : "-";
   std::string progress = std::to_string(tj->getProgress()) + "%";
   std::string status;
   switch (tj->getStatus()) {

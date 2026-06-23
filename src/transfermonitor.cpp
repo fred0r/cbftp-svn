@@ -356,7 +356,7 @@ void TransferMonitor::tick(int msg) {
   timestamp += TICK_INTERVAL;
   ++ticker;
   if (type == TM_TYPE_FXP) {
-    updateFXPSizeSpeed();
+    updateFXPSizeSpeed(true);
     if (ticker % 20 == 0) { // run once per second
       if (checkForDeadFXPTransfers()) {
         return;
@@ -564,7 +564,7 @@ void TransferMonitor::finish() {
     span = 10;
   }
   if (type == TM_TYPE_FXP) {
-    updateFXPSizeSpeed();
+    updateFXPSizeSpeed(false);
   }
   if (type == TM_TYPE_DOWNLOAD || type == TM_TYPE_UPLOAD) {
     updateLocalTransferSizeSpeed();
@@ -575,7 +575,7 @@ void TransferMonitor::finish() {
       File * srcfile = fls->getFile(sfile);
       if (srcfile) {
         unsigned long long int size = std::max(srcfile->getSize(), ts->knownTargetSize());
-        unsigned int speed = size / span;
+        unsigned long long int speed = size * 1000 / span;
         ts->setTargetSize(size);
         ts->setSpeed(speed);
         ts->setTimeSpent(span / 1000);
@@ -594,7 +594,7 @@ void TransferMonitor::finish() {
     }
     case TM_TYPE_UPLOAD: {
       unsigned long long int size = lt->size();
-      unsigned int speed = size / span;
+      unsigned long long int speed = size * 1000 / span;
       ts->setTargetSize(size);
       ts->setSpeed(speed);
       ts->setTimeSpent(span / 1000);
@@ -690,7 +690,7 @@ std::shared_ptr<TransferStatus> TransferMonitor::getTransferStatus() const {
   return ts;
 }
 
-void TransferMonitor::updateFXPSizeSpeed() {
+void TransferMonitor::updateFXPSizeSpeed(bool interpolate) {
   File * srcfile = fls->getFile(sfile);
   if (srcfile) {
     int srctouch = srcfile->getTouch();
@@ -717,11 +717,10 @@ void TransferMonitor::updateFXPSizeSpeed() {
       latestdsttouch = dsttouch;
       setTargetSizeSpeed(dstfilesize, span);
     }
-    else {
+    else if (interpolate) {
       // since the actual file size has not changed since last tick,
       // interpolate an updated file size through the currently known speed
-      unsigned long long int speedtemp = ts->getSpeed() * 1024;
-      ts->interpolateAddSize((speedtemp * TICK_INTERVAL) / 1000);
+      ts->interpolateAddSize((ts->getSpeed() * TICK_INTERVAL) / 1000);
     }
     ts->setTimeSpent(span / 1000);
   }
@@ -729,7 +728,7 @@ void TransferMonitor::updateFXPSizeSpeed() {
 
 void TransferMonitor::updateLocalTransferSizeSpeed() {
   if (lt) {
-    unsigned int filesize = lt->size();
+    unsigned long long int filesize = lt->size();
     int span = timestamp - startstamp;
     if (!span) {
       span = 10;
@@ -782,7 +781,7 @@ bool TransferMonitor::checkMaxTransferTime() {
 
 void TransferMonitor::setTargetSizeSpeed(unsigned long long int filesize, int span) {
   ts->setTargetSize(filesize);
-  unsigned int currentspeed = ts->targetSize() / span;
+  unsigned int currentspeed = ts->targetSize() * 1000 / span;
   unsigned int prevspeed = ts->getSpeed();
   if (currentspeed < prevspeed) {
     ts->setSpeed(prevspeed * 0.9 + currentspeed * 0.1);

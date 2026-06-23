@@ -87,7 +87,7 @@ class TransferMonitor : public Core::EventReceiver, public RawBufferCallback {
     void setTargetSizeSpeed(unsigned long long int, int);
     void reset();
     void transferFailed(const std::shared_ptr<TransferStatus> &, TransferError);
-    void updateFXPSizeSpeed();
+    void updateFXPSizeSpeed(bool interpolate);
     void updateLocalTransferSizeSpeed();
     bool checkForDeadFXPTransfers();
     bool checkMaxTransferTime();

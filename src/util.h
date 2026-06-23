@@ -8,7 +8,6 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#define SIZEPOWER 1024
 #define SIZEDECIMALS 2
 
 namespace util {

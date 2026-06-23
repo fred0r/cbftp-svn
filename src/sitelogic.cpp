@@ -2603,10 +2603,7 @@ void SiteLogic::setRequestReady(unsigned int id, void* data, bool status, bool r
   if (returnslot && !connstatetracker[id].isTransferLocked()) {
     available++;
   }
-  if (cb) {
-    cb->requestReady(this, requestid);
-  }
-  else {
+  if (!cb || !cb->requestReady(this, requestid)) {
     finishRequest(requestid);
   }
 }
