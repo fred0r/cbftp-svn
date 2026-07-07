@@ -8,6 +8,15 @@
 
 #define CHUNK 524288
 
+enum class LocalTransferState {
+  INACTIVE,
+  RESERVED,
+  CONNECTING,
+  LISTENING,
+  TLS_HANDSHAKE,
+  ESTABLISHED
+};
+
 class TransferMonitor;
 class FTPConn;
 
@@ -38,7 +47,7 @@ protected:
   unsigned int buflen;
   unsigned int bufpos;
   bool timeoutticker;
-  bool inuse;
+  LocalTransferState state;
 private:
   void FDInterNew(int sockid, int newsockid) override;
   void FDInterInfo(int sockid, const std::string& info) override;
