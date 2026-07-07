@@ -50,9 +50,9 @@ bool LocalDownload::engage(TransferMonitor* tm, int localtransferid, int storeid
   return sockid != -1;
 }
 
-void LocalDownload::reserve() {
+void LocalDownload::reserve(TransferMonitor* tm) {
   sockid = -1;
-  tm = nullptr;
+  this->tm = tm;
   ftpconn = nullptr;
   path = "";
   filename = "";

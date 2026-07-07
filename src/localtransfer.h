@@ -29,7 +29,7 @@ public:
   virtual void disconnect() = 0;
   virtual unsigned long long int size() const = 0;
   FTPConn * getConn() const;
-  virtual void reserve() = 0;
+  virtual void reserve(TransferMonitor* tm) = 0;
   void deactivate();
 protected:
   void activate(int localtransferid);

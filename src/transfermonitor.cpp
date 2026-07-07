@@ -215,7 +215,7 @@ void TransferMonitor::engageDownload(
   }
   if (clientactive) {
     sls->preparePassiveTransfer(src, sfile, false, ipv6, ssl);
-    lt = global->getLocalStorage()->preparePassiveDownload();
+    lt = global->getLocalStorage()->preparePassiveDownload(this);
   }
   else {
     FTPConn* conn = sls->getConn(src);
@@ -289,7 +289,7 @@ void TransferMonitor::engageUpload(
   }
   if (clientactive) {
     sld->preparePassiveTransfer(dst, dfile, false, ipv6, ssl);
-    lt = global->getLocalStorage()->preparePassiveUpload();
+    lt = global->getLocalStorage()->preparePassiveUpload(this);
   }
   else {
     FTPConn* conn = sld->getConn(dst);
@@ -330,7 +330,7 @@ void TransferMonitor::engageList(int transferid, const std::shared_ptr<SiteLogic
   setStatus(TM_STATUS_AWAITING_PASSIVE);
   if (!sls->getSite()->hasBrokenPASV()) {
     sls->preparePassiveList(src, this, ipv6, ssl);
-    lt = global->getLocalStorage()->preparePassiveDownload();
+    lt = global->getLocalStorage()->preparePassiveDownload(this);
   }
   else {
     clientactive = false;

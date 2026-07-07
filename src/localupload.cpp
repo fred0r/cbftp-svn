@@ -34,10 +34,10 @@ bool LocalUpload::engage(TransferMonitor* tm, int localtransferid, const Path& p
   return sockid != -1;
 }
 
-void LocalUpload::reserve() {
+void LocalUpload::reserve(TransferMonitor* tm) {
   assert(!active());
   sockid = -1;
-  tm = nullptr;
+  this->tm = tm;
   ftpconn = nullptr;
   path = "";
   filename = "";
