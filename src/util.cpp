@@ -96,7 +96,7 @@ std::string simpleTimeFormat(int milliseconds, bool showmillis) {
     time += std::to_string(seconds);
     milliseconds = milliseconds % 1000;
     if (showmillis) {
-      char buf[6];
+      char buf[16];
       std::sprintf(buf, ".%.3ds", milliseconds);
       time += buf;
     }

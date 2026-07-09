@@ -766,7 +766,7 @@ bool TransferMonitor::checkForDeadFXPTransfers() {
 }
 
 bool TransferMonitor::checkMaxTransferTime() {
-  if (maxtransfertimeseconds > 0 && (int)(timestamp / 1000) > maxtransfertimeseconds) {
+  if (maxtransfertimeseconds > 0 && (int)(timestamp - startstamp) / 1000 > maxtransfertimeseconds) {
     if (status == TM_STATUS_TRANSFERRING || status == TM_STATUS_AWAITING_ACTIVE || status == TM_STATUS_AWAITING_PASSIVE) {
       if (!!ts) {
         ts->addLogLine("[" + global->getTimeReference()->getCurrentLogTimeStamp() + "] [Timeout reached after " + std::to_string(maxtransfertimeseconds) + " seconds. Disconnecting]");
