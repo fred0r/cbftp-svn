@@ -728,8 +728,8 @@ void SettingsLoaderSaver::loadSettings() {
     std::string setting = line.substr(0, tok);
     std::string value = line.substr(tok + 1);
     if (!setting.compare("logtimestampms")) {
-      bool logtimestampms = !value.compare("true");
-      global->getTimeReference()->setLogTimeStampMilliseconds(logtimestampms);
+      bool timestampms = !value.compare("true");
+      global->getTimeReference()->setTimeStampMilliseconds(timestampms);
     }
   }
 
@@ -1104,7 +1104,7 @@ void SettingsLoaderSaver::saveSettings() {
     dfh->addOutputLine("LogManager", "maxrawbuflines=" + std::to_string(global->getLogManager()->getMaxRawbufLines()));
   }
   {
-    if (global->getTimeReference()->getLogTimeStampMilliseconds()) {
+    if (global->getTimeReference()->getTimeStampMilliseconds()) {
       dfh->addOutputLine("TimeReference", "logtimestampms=true");
     }
   }

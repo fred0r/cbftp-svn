@@ -67,9 +67,9 @@ class TransferMonitor : public Core::EventReceiver, public RawBufferCallback {
     bool sourcesslclient;
     bool ipv6;
     TransferMonitorType type;
-    int timestamp;
-    int startstamp;
-    int partialcompletestamp;
+    unsigned long long int timestamp;
+    unsigned long long int startstamp;
+    unsigned long long int partialcompletestamp;
     TransferManager * tm;
     std::shared_ptr<TransferStatus> ts;
     int latestsrctouch;

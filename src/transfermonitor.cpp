@@ -481,7 +481,7 @@ void TransferMonitor::activeStarted() {
     else if (clientactive) {
       startClientTransfer();
     }
-    startstamp = timestamp;
+    startstamp = util::getEpochNowMillis();
   }
 }
 
@@ -559,7 +559,7 @@ void TransferMonitor::targetComplete() {
 }
 
 void TransferMonitor::finish() {
-  int span = timestamp - startstamp;
+  int span = util::getEpochNowMillis() - startstamp;
   if (span == 0) {
     span = 10;
   }
@@ -578,7 +578,7 @@ void TransferMonitor::finish() {
         unsigned long long int speed = size * 1000 / span;
         ts->setTargetSize(size);
         ts->setSpeed(speed);
-        ts->setTimeSpent(span / 1000);
+        ts->setTimeSpent(span);
         if (type == TM_TYPE_FXP) {
           fld->setFileUpdateFlag(dfile, size, speed, sls->getSite(), sld->getSite(), srcco, dstco);
         }
@@ -597,7 +597,7 @@ void TransferMonitor::finish() {
       unsigned long long int speed = size * 1000 / span;
       ts->setTargetSize(size);
       ts->setSpeed(speed);
-      ts->setTimeSpent(span / 1000);
+      ts->setTimeSpent(span);
       sld->getSite()->addTransferStatsFile(STATS_UP, size);
       global->getStatistics()->addTransferStatsFile(STATS_UP, size);
       break;
@@ -707,7 +707,7 @@ void TransferMonitor::updateFXPSizeSpeed(bool interpolate) {
     unsigned long long int dstfilesize = dstfile->getSize();
     int span = timestamp - startstamp;
     int dsttouch = dstfile->getTouch();
-    if (!span) {
+    if (span <= 0) {
       span = 10;
     }
 
@@ -722,7 +722,7 @@ void TransferMonitor::updateFXPSizeSpeed(bool interpolate) {
       // interpolate an updated file size through the currently known speed
       ts->interpolateAddSize((ts->getSpeed() * TICK_INTERVAL) / 1000);
     }
-    ts->setTimeSpent(span / 1000);
+    ts->setTimeSpent(span);
   }
 }
 
@@ -730,11 +730,11 @@ void TransferMonitor::updateLocalTransferSizeSpeed() {
   if (lt) {
     unsigned long long int filesize = lt->size();
     int span = timestamp - startstamp;
-    if (!span) {
+    if (span <= 0) {
       span = 10;
     }
     setTargetSizeSpeed(filesize, span);
-    ts->setTimeSpent(span / 1000);
+    ts->setTimeSpent(span);
   }
 }
 
@@ -766,7 +766,7 @@ bool TransferMonitor::checkForDeadFXPTransfers() {
 }
 
 bool TransferMonitor::checkMaxTransferTime() {
-  if (maxtransfertimeseconds > 0 && timestamp / 1000 > maxtransfertimeseconds) {
+  if (maxtransfertimeseconds > 0 && (int)(timestamp / 1000) > maxtransfertimeseconds) {
     if (status == TM_STATUS_TRANSFERRING || status == TM_STATUS_AWAITING_ACTIVE || status == TM_STATUS_AWAITING_PASSIVE) {
       if (!!ts) {
         ts->addLogLine("[" + global->getTimeReference()->getCurrentLogTimeStamp() + "] [Timeout reached after " + std::to_string(maxtransfertimeseconds) + " seconds. Disconnecting]");
@@ -807,9 +807,9 @@ void TransferMonitor::reset() {
   clientactive = true;
   fxpdstactive = true;
   ssl = false;
-  timestamp = 0;
-  startstamp = 0;
-  partialcompletestamp = 0;
+  timestamp = util::getEpochNowMillis();
+  startstamp = timestamp;
+  partialcompletestamp = timestamp;
   rawbufqueue.clear();
   storeid = -1;
   maxtransfertimeseconds = -1;
