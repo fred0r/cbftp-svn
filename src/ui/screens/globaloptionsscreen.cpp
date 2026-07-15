@@ -245,6 +245,16 @@ void GlobalOptionsScreen::initialize(unsigned int row, unsigned int col) {
   sslfxp->addOption("Prefer on", SITE_SSL_PREFER_ON);
   sslfxp->addOption("Always on", SITE_SSL_ALWAYS_ON);
   sslfxp->setOption(sm->getDefaultSSLTransferPolicy());
+  std::shared_ptr<MenuSelectOptionCheckBox> tlsfpver = mso.addCheckBox(y++, x, "tlsfpver", "Default TLS fingerprint verification:",
+                                                                        sm->getDefaultTLSFingerprintVerification());
+  std::shared_ptr<MenuSelectOptionCheckBox> tlsfpretry = mso.addCheckBox(y++, x, "tlsfpretry", "Default TLS fingerprint: auto-accept on change:",
+                                                                          sm->getDefaultTLSFingerprintAutoRetry());
+  std::shared_ptr<MenuSelectOptionCheckBox> tlsrequirevalid = mso.addCheckBox(y++, x, "tlsrequirevalid", "Default TLS certificate: require valid CA:",
+                                                                               sm->getDefaultRequireValidCert());
+  mso.addStringField(y++, x, "tlsexpirywarn", "Default TLS cert expiry warning (days):",
+                     std::to_string(sm->getDefaultTLSExpiryWarn()), false, 4);
+  mso.addCheckBox(y++, x, "tlsallowexpired", "Default TLS certificate: allow expired:",
+                   sm->getDefaultTLSAllowExpired());
   mso.addStringField(y++, x, "defidletime", "Default site max idle time (s):", std::to_string(sm->getDefaultMaxIdleTime()), false);
   y++;
   mso.addStringField(y++, x, "dlpath", "Local download path:", ls->getDownloadPath().toString(), false, 53, 128);
@@ -461,6 +471,21 @@ bool GlobalOptionsScreen::keyPressed(unsigned int ch) {
         }
         else if (identifier == "tlsfxp") {
           sm->setDefaultSSLTransferPolicy(std::static_pointer_cast<MenuSelectOptionTextArrow>(msoe)->getData());
+        }
+        else if (identifier == "tlsfpver") {
+          sm->setDefaultTLSFingerprintVerification(std::static_pointer_cast<MenuSelectOptionCheckBox>(msoe)->getData());
+        }
+        else if (identifier == "tlsfpretry") {
+          sm->setDefaultTLSFingerprintAutoRetry(std::static_pointer_cast<MenuSelectOptionCheckBox>(msoe)->getData());
+        }
+        else if (identifier == "tlsrequirevalid") {
+          sm->setDefaultRequireValidCert(std::static_pointer_cast<MenuSelectOptionCheckBox>(msoe)->getData());
+        }
+        else if (identifier == "tlsexpirywarn") {
+          sm->setDefaultTLSExpiryWarn(std::stoi(std::static_pointer_cast<MenuSelectOptionTextField>(msoe)->getData()));
+        }
+        else if (identifier == "tlsallowexpired") {
+          sm->setDefaultTLSAllowExpired(std::static_pointer_cast<MenuSelectOptionCheckBox>(msoe)->getData());
         }
         else if (identifier == "defidletime") {
           sm->setDefaultMaxIdleTime(std::stoi(std::static_pointer_cast<MenuSelectOptionTextField>(msoe)->getData()));

@@ -2,7 +2,6 @@
 
 #include <sstream>
 #include <csignal>
-#include <cstdio>
 #include <cctype>
 #include <ctime>
 

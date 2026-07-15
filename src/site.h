@@ -119,13 +119,21 @@ private:
   bool freeslot;
   bool stayloggedin;
   TransferPairing transferpairing;
-  int maxtransfertimeseconds;
+int maxtransfertimeseconds;
   int maxspreadjobtimeseconds;
   std::string freetext;
-public:
+  std::string tlsfingerprint;
+  bool tlsfingerprintverification;
+  bool tlsfingerprintautoretry;
+  bool requirevalidcert;
+  bool tlsallowexpired;
+  int tlsexpirywarn;
+  int tlslastexpirydays;
+ public:
   Site();
   Site(const std::string &);
   Site(const Site &);
+  ~Site();
   std::map<std::string, Path, util::naturalComparator>::const_iterator sectionsBegin() const;
   std::map<std::string, Path, util::naturalComparator>::const_iterator sectionsEnd() const;
   std::map<std::string, unsigned long long int>::const_iterator avgspeedBegin() const;
@@ -286,4 +294,19 @@ public:
   void setMaxSpreadJobTimeSeconds(int seconds);
   std::string getFreeText() const;
   void setFreeText(const std::string& freetext);
+  std::string getTLSFingerprint() const;
+  void setTLSFingerprint(const std::string& fp);
+  bool getTLSFingerprintVerification() const;
+  void setTLSFingerprintVerification(bool enabled);
+  bool getTLSFingerprintAutoRetry() const;
+  void setTLSFingerprintAutoRetry(bool enabled);
+  bool getRequireValidCert() const;
+  void setRequireValidCert(bool enabled);
+  bool getTLSAllowExpired() const;
+  void setTLSAllowExpired(bool enabled);
+  int getTLSExpiryWarn() const;
+  void setTLSExpiryWarn(int days);
+  int getTLSLastExpiryDays() const;
+  void setTLSLastExpiryDays(int days);
+  void updateTLSFingerprint(const std::string& newfp);
 };

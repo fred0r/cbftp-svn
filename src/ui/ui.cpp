@@ -14,6 +14,7 @@
 #include "../datafilehandler.h"
 #include "../path.h"
 #include "../remotecommandhandler.h"
+#include "../sitelogic.h"
 
 #include "legendprinterkeybinds.h"
 #include "legendprinterspreadjob.h"
@@ -70,6 +71,9 @@
 #include "screens/externalscriptsscreen.h"
 #include "screens/transferjobsfilterscreen.h"
 #include "screens/spreadjobsfilterscreen.h"
+#include "screens/tlsfingerprintpromptscreen.h"
+#include "screens/expiredcertpromptscreen.h"
+#include "screens/queuescreen.h"
 
 namespace {
 
@@ -109,6 +113,7 @@ Ui::Ui() :
   globalkeybinds->addBind('\\', KEYACTION_FULLSCREEN, "Toggle fullscreen mode");
   globalkeybinds->addBind('N', KEYACTION_NEXT_PREPARED_STARTER, "Toggle next prepared spread job auto starter");
   globalkeybinds->addBind('U', KEYACTION_TOGGLE_UDP, "Toggle UDP");
+  globalkeybinds->addBind('Q', KEYACTION_QUEUE_SCREEN, "Transfer queue");
   addKeyBinds(globalkeybinds.get());
 }
 
@@ -179,6 +184,9 @@ bool Ui::init() {
   externalscriptsscreen = std::make_shared<ExternalScriptsScreen>(this);
   transferjobsfilterscreen = std::make_shared<TransferJobsFilterScreen>(this);
   spreadjobsfilterscreen = std::make_shared<SpreadJobsFilterScreen>(this);
+  tlsfingerprintpromptscreen = std::make_shared<TLSFingerprintPromptScreen>(this);
+  expiredcertpromptscreen = std::make_shared<ExpiredCertPromptScreen>(this);
+  queuescreen = std::make_shared<QueueScreen>(this);
   mainwindows.push_back(mainscreen);
   mainwindows.push_back(newkeyscreen);
   mainwindows.push_back(confirmationscreen);
@@ -222,6 +230,9 @@ bool Ui::init() {
   mainwindows.push_back(metricsscreen);
   mainwindows.push_back(transferpairingscreen);
   mainwindows.push_back(externalscriptsscreen);
+  mainwindows.push_back(queuescreen);
+  mainwindows.push_back(tlsfingerprintpromptscreen);
+  mainwindows.push_back(expiredcertpromptscreen);
 
   legendprinterkeybinds = std::make_shared<LegendPrinterKeybinds>(this);
   legendwindow->setMainLegendPrinter(legendprinterkeybinds);
@@ -506,6 +517,12 @@ void Ui::globalKeyBinds(int ch) {
         fullscreentoggle = true;
       }
       break;
+    case KEYACTION_QUEUE_SCREEN:
+    {
+      queuescreen->initialize(mainrow, col);
+      switchToWindow(queuescreen);
+      break;
+    }
     default:
       match = false;
       break;
@@ -1123,7 +1140,7 @@ void Ui::loadSettings(std::shared_ptr<DataFileHandler> dfh) {
 void Ui::saveSettings(std::shared_ptr<DataFileHandler> dfh) {
   dfh->addOutputLine("UI", "legendmode=" + std::to_string(getLegendMode()));
   dfh->addOutputLine("UI", "highlightentireline=" + std::string(getHighlightEntireLine() ? "true" : "false"));
-  dfh->addOutputLine("UI", "showfreetext=" + getShowFreeText());
+  dfh->addOutputLine("UI", "showfreetext=" + std::string(getShowFreeText() ? "true" : "false"));
   dfh->addOutputLine("UI", "maxmainscreenspreadjobs=" + std::to_string(getMaxMainScreenSpreadJobs()));
   dfh->addOutputLine("UI", "maxmainscreentransferjobs=" + std::to_string(getMaxMainScreenTransferJobs()));
   dfh->addOutputLine("UI", "maxmainscreenspreadjobage=" + std::to_string(getMaxMainScreenSpreadJobAge()));
@@ -1180,4 +1197,73 @@ VirtualView& Ui::getVirtualView() {
 
 ExternalFileViewing& Ui::getExternalFileViewing() {
   return efv;
+}
+
+void Ui::fingerprintPromptRequired(void* logic, int connid,
+                                   const std::string& sitename,
+                                   const std::string& oldfingerprint,
+                                   const std::string& newfingerprint) {
+  pending_fingerprint_logics[connid] = std::make_pair(logic, sitename);
+  tlsfingerprintpromptscreen->initialize(mainrow, col, connid, sitename, oldfingerprint, newfingerprint);
+  switchToWindow(tlsfingerprintpromptscreen);
+  backendPush();
+}
+
+void Ui::fingerprintPromptAccept(int connid) {
+  auto it = pending_fingerprint_logics.find(connid);
+  if (it != pending_fingerprint_logics.end()) {
+    SiteLogic* sl = static_cast<SiteLogic*>(it->second.first);
+    sl->resumeWithFingerprintDecision(connid, true, false);
+    pending_fingerprint_logics.erase(it);
+  }
+  returnToLast();
+}
+
+void Ui::fingerprintPromptDisable(int connid) {
+  auto it = pending_fingerprint_logics.find(connid);
+  if (it != pending_fingerprint_logics.end()) {
+    SiteLogic* sl = static_cast<SiteLogic*>(it->second.first);
+    sl->resumeWithFingerprintDecision(connid, true, true);
+    pending_fingerprint_logics.erase(it);
+  }
+  returnToLast();
+}
+
+void Ui::fingerprintPromptCancel(int connid) {
+  auto it = pending_fingerprint_logics.find(connid);
+  if (it != pending_fingerprint_logics.end()) {
+    SiteLogic* sl = static_cast<SiteLogic*>(it->second.first);
+    sl->resumeWithFingerprintDecision(connid, false, false);
+    pending_fingerprint_logics.erase(it);
+  }
+  returnToLast();
+}
+
+void Ui::expiredCertPromptRequired(void* logic, int connid,
+                                   const std::string& sitename,
+                                   int expdays) {
+  pending_expired_cert_logics[connid] = std::make_pair(logic, sitename);
+  expiredcertpromptscreen->initialize(mainrow, col, connid, sitename, expdays);
+  switchToWindow(expiredcertpromptscreen);
+  backendPush();
+}
+
+void Ui::expiredCertPromptYes(int connid) {
+  auto it = pending_expired_cert_logics.find(connid);
+  if (it != pending_expired_cert_logics.end()) {
+    SiteLogic* sl = static_cast<SiteLogic*>(it->second.first);
+    sl->resumeWithExpiredCertDecision(connid, true);
+    pending_expired_cert_logics.erase(it);
+  }
+  returnToLast();
+}
+
+void Ui::expiredCertPromptNo(int connid) {
+  auto it = pending_expired_cert_logics.find(connid);
+  if (it != pending_expired_cert_logics.end()) {
+    SiteLogic* sl = static_cast<SiteLogic*>(it->second.first);
+    sl->resumeWithExpiredCertDecision(connid, false);
+    pending_expired_cert_logics.erase(it);
+  }
+  returnToLast();
 }

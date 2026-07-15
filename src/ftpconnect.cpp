@@ -90,8 +90,9 @@ void FTPConnect::FDFail(int sockid, const std::string& error) {
   }
 }
 
-void FTPConnect::FDSSLSuccess(int sockid, const std::string& cipher) {
+void FTPConnect::FDSSLSuccess(int sockid, const std::string& cipher, const std::string& fingerprint) {
   owner->ftpConnectInfo(id, "[Cipher: " + cipher + "]");
+  tlsfingerprint = fingerprint;
 }
 
 int FTPConnect::getId() const {
@@ -105,6 +106,10 @@ int FTPConnect::handedOver() {
 
 Address FTPConnect::getAddress() const {
   return addr;
+}
+
+std::string FTPConnect::getTLSFingerprint() const {
+  return tlsfingerprint;
 }
 
 bool FTPConnect::isPrimary() const {

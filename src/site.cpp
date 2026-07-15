@@ -1,5 +1,7 @@
 #include "site.h"
 
+#include <openssl/crypto.h>
+
 #include "path.h"
 #include "util.h"
 #include "globalcontext.h"
@@ -98,7 +100,14 @@ Site::Site(const std::string& name) :
   freeslot(false),
   stayloggedin(false),
   maxtransfertimeseconds(-1),
-  maxspreadjobtimeseconds(-1)
+  maxspreadjobtimeseconds(-1),
+  tlsfingerprint(""),
+  tlsfingerprintverification(true),
+  tlsfingerprintautoretry(false),
+  requirevalidcert(false),
+  tlsallowexpired(false),
+  tlsexpirywarn(-1),
+  tlslastexpirydays(0)
 {
   Address addr;
   addr.host = "ftp.sunet.se";
@@ -149,6 +158,19 @@ Site::Site(const Site& other) {
   maxtransfertimeseconds = other.maxtransfertimeseconds;
   maxspreadjobtimeseconds = other.maxspreadjobtimeseconds;
   freetext = other.freetext;
+  tlsfingerprint = other.tlsfingerprint;
+  tlsfingerprintverification = other.tlsfingerprintverification;
+  tlsfingerprintautoretry = other.tlsfingerprintautoretry;
+  requirevalidcert = other.requirevalidcert;
+  tlsallowexpired = other.tlsallowexpired;
+  tlsexpirywarn = other.tlsexpirywarn;
+  tlslastexpirydays = other.tlslastexpirydays;
+}
+
+Site::~Site() {
+  if (!pass.empty()) {
+    OPENSSL_cleanse(&pass[0], pass.size());
+  }
 }
 
 std::map<std::string, Path>::const_iterator Site::sectionsBegin() const {
@@ -1047,4 +1069,64 @@ std::string Site::getFreeText() const {
 
 void Site::setFreeText(const std::string& freetext) {
   this->freetext = freetext;
+}
+
+std::string Site::getTLSFingerprint() const {
+  return tlsfingerprint;
+}
+
+void Site::setTLSFingerprint(const std::string& fp) {
+  tlsfingerprint = fp;
+}
+
+bool Site::getTLSFingerprintVerification() const {
+  return tlsfingerprintverification;
+}
+
+void Site::setTLSFingerprintVerification(bool enabled) {
+  tlsfingerprintverification = enabled;
+}
+
+bool Site::getTLSFingerprintAutoRetry() const {
+  return tlsfingerprintautoretry;
+}
+
+void Site::setTLSFingerprintAutoRetry(bool enabled) {
+  tlsfingerprintautoretry = enabled;
+}
+
+bool Site::getRequireValidCert() const {
+  return requirevalidcert;
+}
+
+void Site::setRequireValidCert(bool enabled) {
+  requirevalidcert = enabled;
+}
+
+bool Site::getTLSAllowExpired() const {
+  return tlsallowexpired;
+}
+
+void Site::setTLSAllowExpired(bool enabled) {
+  tlsallowexpired = enabled;
+}
+
+int Site::getTLSExpiryWarn() const {
+  return tlsexpirywarn;
+}
+
+void Site::setTLSExpiryWarn(int days) {
+  tlsexpirywarn = days;
+}
+
+int Site::getTLSLastExpiryDays() const {
+  return tlslastexpirydays;
+}
+
+void Site::setTLSLastExpiryDays(int days) {
+  tlslastexpirydays = days;
+}
+
+void Site::updateTLSFingerprint(const std::string& newfp) {
+  tlsfingerprint = newfp;
 }

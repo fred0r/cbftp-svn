@@ -143,7 +143,18 @@ void EditSiteScreen::initialize(unsigned int row, unsigned int col, const std::s
   sslfxp->addOption("Prefer on", SITE_SSL_PREFER_ON);
   sslfxp->addOption("Always on", SITE_SSL_ALWAYS_ON);
   sslfxp->setOption(this->site->getSSLTransferPolicy());
-  std::shared_ptr<MenuSelectOptionTextArrow> transferproto = mso.addTextArrow(y++, x + 30, "transferprotocol", "Transfer protocol:");
+  y++;
+  std::shared_ptr<MenuSelectOptionCheckBox> tlsfpver = mso.addCheckBox(y++, x, "tlsfpver", "TLS fingerprint: verification:", this->site->getTLSFingerprintVerification());
+  std::shared_ptr<MenuSelectOptionCheckBox> tlsfpretry = mso.addCheckBox(y++, x, "tlsfpretry", "TLS fingerprint: auto-accept on change:", this->site->getTLSFingerprintAutoRetry());
+  std::shared_ptr<MenuSelectOptionCheckBox> tlsrequirevalid = mso.addCheckBox(y++, x, "tlsrequirevalid", "TLS certificate: require valid CA:", this->site->getRequireValidCert());
+  mso.addStringField(y++, x, "tlsexpirywarn", "TLS certificate: warn before expiry (days):", std::to_string(this->site->getTLSExpiryWarn()), false, 4);
+  mso.addCheckBox(y++, x, "tlsallowexpired", "TLS certificate: allow expired:", this->site->getTLSAllowExpired());
+  std::string fp = this->site->getTLSFingerprint();
+  if (fp.empty()) {
+    fp = "(none)";
+  }
+  mso.addStringField(y++, x, "tlsfp", "TLS fingerprint:", fp, false, 95);
+  std::shared_ptr<MenuSelectOptionTextArrow> transferproto = mso.addTextArrow(y++, x, "transferprotocol", "Transfer protocol:");
   transferproto->addOption("IPv4 only", static_cast<int>(TransferProtocol::IPV4_ONLY));
   transferproto->addOption("Prefer IPv4", static_cast<int>(TransferProtocol::PREFER_IPV4));
   transferproto->addOption("Prefer IPv6", static_cast<int>(TransferProtocol::PREFER_IPV6));
@@ -471,6 +482,21 @@ bool EditSiteScreen::keyPressed(unsigned int ch) {
         }
         else if (identifier == "tlstransfer") {
           site->setSSLTransferPolicy(std::static_pointer_cast<MenuSelectOptionTextArrow>(msoe)->getData());
+        }
+        else if (identifier == "tlsfpver") {
+          site->setTLSFingerprintVerification(std::static_pointer_cast<MenuSelectOptionCheckBox>(msoe)->getData());
+        }
+        else if (identifier == "tlsfpretry") {
+          site->setTLSFingerprintAutoRetry(std::static_pointer_cast<MenuSelectOptionCheckBox>(msoe)->getData());
+        }
+        else if (identifier == "tlsrequirevalid") {
+          site->setRequireValidCert(std::static_pointer_cast<MenuSelectOptionCheckBox>(msoe)->getData());
+        }
+        else if (identifier == "tlsexpirywarn") {
+          site->setTLSExpiryWarn(std::stoi(std::static_pointer_cast<MenuSelectOptionTextField>(msoe)->getData()));
+        }
+        else if (identifier == "tlsallowexpired") {
+          site->setTLSAllowExpired(std::static_pointer_cast<MenuSelectOptionCheckBox>(msoe)->getData());
         }
         else if (identifier == "transferprotocol") {
           site->setTransferProtocol(static_cast<TransferProtocol>(std::static_pointer_cast<MenuSelectOptionTextArrow>(msoe)->getData()));

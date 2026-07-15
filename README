@@ -113,6 +113,36 @@ Your newly created transfer job will be visible in the main screen of cbftp.
 Transfer jobs use a single slot on each site by default; this can be modified
 in the detailed view of each transfer job.
 
+TRANSFER QUEUE
+
+Instead of starting transfers immediately, you can queue files and directories
+while browsing and initiate them later. This is useful when you want to collect
+items from multiple directories or sites before starting the transfers.
+
+Press a on selected files in the browse screen to add them to
+the transfer queue. When browsing a single site, items are queued as downloads
+to the default download path. When browsing in split mode, the direction is
+determined by the context: SITE-SITE queues as FXP, SITE-LOCAL as download,
+LOCAL-SITE as upload.
+
+The queue is accessible from anywhere by pressing Q (shown in the info bar
+as "Queue: N"). In the queue screen you can:
+- Press Enter to view transfer details
+- Press t to start the first queued transfer
+- Press T to start transfers sequentially (auto-chains through queue)
+- Press s to stop the top transfer after the current release
+- Press S to stop the top transfer after the current file
+- Press + to move the selected item up in the queue
+- Press - to move the selected item down in the queue
+- Press Delete to remove an item (with y/n confirmation)
+- Press c to clear the entire queue (with y/n confirmation)
+
+Running transfers show a dot animation (FXP. -> FXP.. -> FXP...),
+failed transfers show an x prefix (xFXP). Items stay in the queue
+until their TransferJob reaches DONE status, then are removed.
+
+The queue is memory-only and will be lost when cbftp exits.
+
 STARTING A SPREAD JOB
 
 A spread job is a larger form of transfer job that spreads an item among
@@ -348,6 +378,37 @@ Field summary:
     for transfer jobs, and also the default number of slots to use when
     starting them.
 - TLS Transfers: The security behavior for transfers to/from this site.
+- TLS fingerprint: verification - Enable/disable TLS certificate fingerprint
+  verification. When enabled, the first connection's fingerprint is saved and
+  verified on all subsequent connections. Disabling reduces security but allows
+  connecting when the certificate has changed and you trust the new one.
+- TLS fingerprint: auto-accept on change - When enabled, changed certificate
+  fingerprints are automatically accepted. The operation is retried immediately
+  without user interaction. Only applies to API operations.
+- TLS fingerprint: <value> - The current stored SHA-256 fingerprint of the
+  site's TLS certificate (read-only). Set automatically on first connection.
+- TLS certificate: require valid CA - When enabled, cbftp validates the
+  certificate chain against the system CA trust store (e.g. Let's Encrypt).
+  Blocks connection if the cert is not trusted. Disabled by default since
+  most FTP servers use self-signed certificates.
+- TLS certificate: warn before expiry (days) - Days before expiry to start
+  warning. Set to -1 to use the global default (configured in G), or 0 to
+  disable expiry warnings entirely. Default: use global (14 days).
+
+SSL CAVEATS
+
+cbftp now performs three additional TLS certificate checks after fingerprint
+verification:
+- Hostname verification: Checks if the certificate's CN/SAN matches the
+  configured site address. Logs a warning on mismatch. Supports both domain
+  names and IP addresses (IP SAN certs, e.g. Let's Encrypt).
+- Expiry check: Warns if the certificate has expired or is about to expire
+  (within the configured warning period, default 14 days).
+- Chain trust: When enabled per-site, validates the certificate chain
+  against the system CA store and blocks untrusted connections.
+
+These checks are non-blocking by default (warnings only), except for chain
+trust which requires opting in per-site.
 - Transfer protocol: Preferred/supported protocol IPv4/IPv6
 - Stay logged in: Don't log out from sites automatically. Enable
   anti-anti-idle with the configured max idle time as period.
@@ -478,6 +539,7 @@ p - Start the latest prepared spread job.
 N - Toggle the next prepared spread job auto starter. While this function is
     enabled, the next 'prepare' remote command that arrives will be started
     immediately. The toggle times out after 10 minutes.
+Q - Open the transfer queue screen.
 - - Highlight the entire table line. Usable in lists, tables etc where it
     might be hard to tell which items that are on the same line
 They can be configured through the global options screen.

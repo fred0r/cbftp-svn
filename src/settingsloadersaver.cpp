@@ -601,6 +601,24 @@ void SettingsLoaderSaver::loadSettings() {
       Crypto::base64Decode(indata, outdata);
       site->setFreeText(std::string(outdata.begin(), outdata.end()));
     }
+    else if (!setting.compare("tlsfp")) {
+      site->setTLSFingerprint(value);
+    }
+    else if (!setting.compare("tlsfpver")) {
+      site->setTLSFingerprintVerification(value == "true"|| value == "1");
+    }
+    else if (!setting.compare("tlsfpretry")) {
+      site->setTLSFingerprintAutoRetry(value == "true" || value == "1");
+    }
+    else if (!setting.compare("tlsrequirevalid")) {
+      site->setRequireValidCert(value == "true" || value == "1");
+    }
+    else if (!setting.compare("tlsexpirywarn")) {
+      site->setTLSExpiryWarn(std::stoi(value));
+    }
+    else if (!setting.compare("tlsallowexpired")) {
+      site->setTLSAllowExpired(value == "true" || value == "1");
+    }
   }
   for (std::list<std::pair<std::string, std::string> >::const_iterator it2 = exceptsources.begin(); it2 != exceptsources.end(); it2++) {
     std::shared_ptr<Site> site = global->getSiteManager()->getSite(it2->first);
@@ -666,6 +684,21 @@ void SettingsLoaderSaver::loadSettings() {
     }
     else if (!setting.compare("maxidletime")) {
       global->getSiteManager()->setDefaultMaxIdleTime(std::stoi(value));
+    }
+    else if (!setting.compare("tlsfpver")) {
+      global->getSiteManager()->setDefaultTLSFingerprintVerification(value == "true");
+    }
+    else if (!setting.compare("tlsfpretry")) {
+      global->getSiteManager()->setDefaultTLSFingerprintAutoRetry(value == "true");
+    }
+    else if (!setting.compare("tlsrequirevalid")) {
+      global->getSiteManager()->setDefaultRequireValidCert(value == "true");
+    }
+    else if (!setting.compare("tlsexpirywarn")) {
+      global->getSiteManager()->setDefaultTLSExpiryWarn(std::stoi(value));
+    }
+    else if (!setting.compare("tlsallowexpired")) {
+      global->getSiteManager()->setDefaultTLSAllowExpired(value == "true");
     }
   }
 
@@ -1064,6 +1097,15 @@ void SettingsLoaderSaver::saveSettings() {
       indata = Core::BinaryData(freetext.begin(), freetext.end());
       Crypto::base64Encode(indata, outdata);
       dfh->addOutputLine(filetag, name + "$freetextb64=" + std::string(outdata.begin(), outdata.end()));
+      std::string tlsfp = site->getTLSFingerprint();
+      if (!tlsfp.empty()) {
+        dfh->addOutputLine(filetag, name + "$tlsfp=" + tlsfp);
+      }
+      dfh->addOutputLine(filetag, name + "$tlsfpver=" + (site->getTLSFingerprintVerification() ? "true" : "false"));
+      dfh->addOutputLine(filetag, name + "$tlsfpretry=" + (site->getTLSFingerprintAutoRetry() ? "true" : "false"));
+      dfh->addOutputLine(filetag, name + "$tlsrequirevalid=" + (site->getRequireValidCert() ? "true" : "false"));
+      dfh->addOutputLine(filetag, name + "$tlsexpirywarn=" + std::to_string(site->getTLSExpiryWarn()));
+      dfh->addOutputLine(filetag, name + "$tlsallowexpired=" + (site->getTLSAllowExpired() ? "true" : "false"));
     }
     dfh->addOutputLine(defaultstag, "username=" + global->getSiteManager()->getDefaultUserName());
     std::string password = global->getSiteManager()->getDefaultPassword();
@@ -1077,6 +1119,11 @@ void SettingsLoaderSaver::saveSettings() {
     dfh->addOutputLine(defaultstag, "maxidletime=" + std::to_string(global->getSiteManager()->getDefaultMaxIdleTime()));
     dfh->addOutputLine(defaultstag, "ssltransfer=" + std::to_string(global->getSiteManager()->getDefaultSSLTransferPolicy()));
     dfh->addOutputLine(defaultstag, "tlsmode=" + std::to_string(static_cast<int>(global->getSiteManager()->getDefaultTLSMode())));
+    dfh->addOutputLine(defaultstag, std::string("tlsfpver=") + (global->getSiteManager()->getDefaultTLSFingerprintVerification() ? "true" : "false"));
+    dfh->addOutputLine(defaultstag, std::string("tlsfpretry=") + (global->getSiteManager()->getDefaultTLSFingerprintAutoRetry() ? "true" : "false"));
+    dfh->addOutputLine(defaultstag, std::string("tlsrequirevalid=") + (global->getSiteManager()->getDefaultRequireValidCert() ? "true" : "false"));
+    dfh->addOutputLine(defaultstag, std::string("tlsexpirywarn=") + std::to_string(global->getSiteManager()->getDefaultTLSExpiryWarn()));
+    dfh->addOutputLine(defaultstag, std::string("tlsallowexpired=") + (global->getSiteManager()->getDefaultTLSAllowExpired() ? "true" : "false"));
   }
 
   {

@@ -11,6 +11,8 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <openssl/err.h>
+#include <openssl/x509.h>
+#include <openssl/x509v3.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -26,6 +28,36 @@
 #include "workmanager.h"
 
 namespace Core {
+
+namespace {
+  std::string getPeerFingerprint(SSL* ssl) {
+    if (!ssl) {
+      return "";
+    }
+    X509* cert = SSL_get_peer_certificate(ssl);
+    if (!cert) {
+      return "";
+    }
+    unsigned char md[EVP_MAX_MD_SIZE];
+    unsigned int n;
+    if (X509_digest(cert, EVP_sha256(), md, &n) != 1) {
+      X509_free(cert);
+      return "";
+    }
+    X509_free(cert);
+    std::string result;
+    result.reserve(n *3);
+    char buf[4];
+    for (unsigned int i = 0; i < n; ++i) {
+      if (i > 0) {
+        result += ':';
+      }
+      sprintf(buf, "%02X", md[i]);
+      result += buf;
+    }
+    return result;
+  }
+}
 
 enum class ResolverResult {
   SUCCESS,
@@ -733,6 +765,60 @@ int IOManager::getReusedSessionKey(int sockid) const {
   return -1;
 }
 
+bool IOManager::checkTLSCertHostname(int sockid, const std::string& hostname) const {
+  std::lock_guard<std::mutex> lock(socketinfomaplock);
+  auto it = socketinfomap.find(sockid);
+  if (it == socketinfomap.end() || it->second.ssl == nullptr) return false;
+  X509* cert = SSL_get_peer_certificate(it->second.ssl);
+  if (!cert) return false;
+  bool isip = hostname.find_first_not_of("0123456789.:abcdefABCDEF") == std::string::npos
+              && hostname.find_first_of("0123456789") != std::string::npos;
+  int result = isip ? X509_check_ip_asc(cert, hostname.c_str(), 0)
+                    : X509_check_host(cert, hostname.c_str(), hostname.length(), 0, NULL);
+  X509_free(cert);
+  return result == 1;
+}
+
+int IOManager::checkTLSCertExpiry(int sockid) const {
+  std::lock_guard<std::mutex> lock(socketinfomaplock);
+  auto it = socketinfomap.find(sockid);
+  if (it == socketinfomap.end() || it->second.ssl == nullptr) return -999;
+  X509* cert = SSL_get_peer_certificate(it->second.ssl);
+  if (!cert) return -999;
+  const ASN1_TIME* notAfter = X509_get_notAfter(cert);
+  int days = 0;
+  ASN1_TIME_diff(&days, NULL, notAfter, NULL);
+  X509_free(cert);
+  return days;
+}
+
+bool IOManager::checkTLSCertTrust(int sockid) const {
+  std::lock_guard<std::mutex> lock(socketinfomaplock);
+  auto it = socketinfomap.find(sockid);
+  if (it == socketinfomap.end() || it->second.ssl == nullptr) return false;
+  X509* cert = SSL_get_peer_certificate(it->second.ssl);
+  if (!cert) return false;
+  STACK_OF(X509)* chain = SSL_get_peer_cert_chain(it->second.ssl);
+  STACK_OF(X509)* untrusted = sk_X509_new_null();
+  if (chain) {
+    for (int i = 1; i < sk_X509_num(chain); i++) {
+      sk_X509_push(untrusted, sk_X509_value(chain, i));
+    }
+  }
+  X509_STORE* store = X509_STORE_new();
+  X509_STORE_set_default_paths(store);
+  X509_STORE_CTX* ctx = X509_STORE_CTX_new();
+  bool ok = false;
+  if (X509_STORE_CTX_init(ctx, store, cert, untrusted) == 1) {
+    ok = X509_verify_cert(ctx) == 1;
+  }
+  X509_STORE_CTX_free(ctx);
+  X509_STORE_free(store);
+  sk_X509_free(untrusted);
+  X509_free(cert);
+  return ok;
+}
+
 std::string IOManager::getSocketAddress(int sockid) const {
   std::lock_guard<std::mutex> lock(socketinfomaplock);
   auto it = socketinfomap.find(sockid);
@@ -944,7 +1030,8 @@ void IOManager::handleTCPSSLNegotiationIn(SocketInfo& socketinfo) {
     socketinfo.type = SocketType::TCP_SSL;
     if (!socketinfo.closing) {
       const char* cipher = SSLManager::getCipher(ssl);
-      workmanager.dispatchEventSSLSuccess(socketinfo.receiver, socketinfo.id, cipher, socketinfo.prio);
+      std::string fingerprint = getPeerFingerprint(ssl);
+      workmanager.dispatchEventSSLSuccess(socketinfo.receiver, socketinfo.id, cipher, fingerprint, socketinfo.prio);
     }
     if (!socketinfo.sendqueue.empty()) {
       setPollWrite(socketinfo);
@@ -999,7 +1086,8 @@ void IOManager::handleTCPSSLNegotiationOut(SocketInfo& socketinfo) {
     socketinfo.type = SocketType::TCP_SSL;
     if (!socketinfo.closing) {
       const char* cipher = SSLManager::getCipher(ssl);
-      workmanager.dispatchEventSSLSuccess(socketinfo.receiver, socketinfo.id, cipher, socketinfo.prio);
+      std::string fingerprint = getPeerFingerprint(ssl);
+      workmanager.dispatchEventSSLSuccess(socketinfo.receiver, socketinfo.id, cipher, fingerprint, socketinfo.prio);
     }
     if (!socketinfo.sendqueue.empty()) {
       return;

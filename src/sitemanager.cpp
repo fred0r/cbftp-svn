@@ -21,6 +21,8 @@
 #define DEFAULTMAXIDLETIME 60
 #define DEFAULTTLSMODE TLSMode::AUTH_TLS
 #define DEFAULTSSLTRANSFER SITE_SSL_PREFER_OFF
+#define DEFAULTTLSFINGERPRINTVERIFICATION true
+#define DEFAULTTLSFINGERPRINTAUTOTRY false
 
 bool siteNameComparator(const std::shared_ptr<Site> & a, const std::shared_ptr<Site> & b) {
   return util::naturalComparator()(a->getName(), b->getName());
@@ -34,7 +36,12 @@ SiteManager::SiteManager() :
   defaultmaxdown(DEFAULTMAXDOWN),
   defaultmaxidletime(DEFAULTMAXIDLETIME),
   defaultssltransfer(DEFAULTSSLTRANSFER),
-  defaulttlsmode(DEFAULTTLSMODE)
+  defaulttlsmode(DEFAULTTLSMODE),
+  defaulttlsfingerprintverification(DEFAULTTLSFINGERPRINTVERIFICATION),
+  defaulttlsfingerprintautoretry(DEFAULTTLSFINGERPRINTAUTOTRY),
+  defaultrequirevalidcert(false),
+  defaulttlsallowexpired(false),
+  defaulttlsexpirywarn(14)
 {
 }
 
@@ -49,9 +56,15 @@ std::shared_ptr<Site> SiteManager::createNewSite() const {
   site->setMaxLogins(getDefaultMaxLogins());
   site->setMaxUp(getDefaultMaxUp());
   site->setMaxDn(getDefaultMaxDown());
+  site->setMaxIdleTime(getDefaultMaxIdleTime());
   site->setTLSMode(getDefaultTLSMode());
   site->setSSLTransferPolicy(getDefaultSSLTransferPolicy());
-  site->setMaxIdleTime(getDefaultMaxIdleTime());
+  site->setTLSFingerprintVerification(getDefaultTLSFingerprintVerification());
+  site->setTLSFingerprintAutoRetry(getDefaultTLSFingerprintAutoRetry());
+  site->setRequireValidCert(getDefaultRequireValidCert());
+  site->setTLSAllowExpired(getDefaultTLSAllowExpired());
+  site->setTLSExpiryWarn(-1);
+  site->setTLSLastExpiryDays(0);
   return site;
 }
 
@@ -262,4 +275,44 @@ void SiteManager::resetAllStats() {
   for (it = sites.begin(); it != sites.end(); it++) {
     (*it)->resetAllStats();
   }
+}
+
+bool SiteManager::getDefaultTLSFingerprintVerification() const {
+  return defaulttlsfingerprintverification;
+}
+
+void SiteManager::setDefaultTLSFingerprintVerification(bool enabled) {
+  defaulttlsfingerprintverification = enabled;
+}
+
+bool SiteManager::getDefaultTLSFingerprintAutoRetry() const {
+  return defaulttlsfingerprintautoretry;
+}
+
+void SiteManager::setDefaultTLSFingerprintAutoRetry(bool enabled) {
+  defaulttlsfingerprintautoretry = enabled;
+}
+
+bool SiteManager::getDefaultRequireValidCert() const {
+  return defaultrequirevalidcert;
+}
+
+void SiteManager::setDefaultRequireValidCert(bool enabled) {
+  defaultrequirevalidcert = enabled;
+}
+
+bool SiteManager::getDefaultTLSAllowExpired() const {
+  return defaulttlsallowexpired;
+}
+
+void SiteManager::setDefaultTLSAllowExpired(bool enabled) {
+  defaulttlsallowexpired = enabled;
+}
+
+int SiteManager::getDefaultTLSExpiryWarn() const {
+  return defaulttlsexpirywarn;
+}
+
+void SiteManager::setDefaultTLSExpiryWarn(int days) {
+  defaulttlsexpirywarn = days;
 }

@@ -125,7 +125,12 @@ An example body when POST/PATCH'ing a site:
   "transfer_source_policy": "ALLOW",   // (ALLOW/BLOCK)
   "transfer_target_policy": "BLOCK",   
   "user": "myusername",
-  "xdupe": true
+  "xdupe": true,
+  "tls_fingerprint": "3D:35:C3:CB:18:7D:87:2B:E1:67:BA:26:61:B5:86:93:F9:FC:3E:4B:46:A2:9A:69:C2:EC:A2:6B:97:8A:3D:31",
+  "tls_fingerprint_verification": true,
+  "tls_fingerprint_auto_retry": false,
+  "tls_allow_expired": false,
+  "tls_require_valid_cert": false
 }
 
 All values do not have to be included. When modifying a site, only the edited
@@ -155,6 +160,94 @@ their default values. Example:
 
 - Delete a site
     DELETE /sites/SITE1
+
+TLS FINGERPRINT VERIFICATION
+
+When TLS is enabled for a site (tls_mode set to AUTH_TLS or IMPLICIT), cbftp
+verifies SSL certificate fingerprints to detect man-in-the-middle attacks or
+certificate changes. Only the last saved fingerprint is stored (no history).
+
+The following fields are available in site responses:
+
+  tls_fingerprint               - Current stored SHA-256 fingerprint (read-only)
+                                  Format: hex bytes separated by colons
+                                  Example: "3D:35:C3:CB:18:7D:87:2B..."
+  
+  tls_fingerprint_verification  - Whether fingerprint verification is enabled
+                                  Default: true
+                                  Values: true/false
+                                  Modifiable via PATCH /sites/SITE1
+  
+  tls_fingerprint_auto_retry    - Auto-accept new fingerprint and retry API
+                                  operations on fingerprint change
+                                  Default: false
+                                  Values: true/false
+                                  Modifiable via PATCH /sites/SITE1
+                                  Only applies to API operations, not terminal UI
+
+  tls_allow_expired             - Allow connections to sites with expired TLS
+                                  certificates instead of failing
+                                  Default: false
+                                  Values: true/false
+                                  Modifiable via PATCH /sites/SITE1
+
+  tls_require_valid_cert        - Require CA-signed certificate chain trust
+                                  Default: false
+                                  Values: true/false
+                                  Modifiable via PATCH /sites/SITE1
+
+On first connection to a site, cbftp automatically saves the certificate
+fingerprint. On subsequent connections, it verifies the fingerprint matches.
+
+FINGERPRINT CHANGE SCENARIOS
+
+When a site's SSL certificate changes during an API operation:
+
+1. API operations with tls_fingerprint_verification=true:
+   
+   If tls_fingerprint_auto_retry=false (default):
+     The operation fails and the error is reported in the failures
+     section of the response. For RAW_COMMAND:
+     {
+       "successes": [],
+       "failures": [
+         {
+           "name": "SITE1",
+           "reason": "{\"status\": \"error\", \"error\": \"tls_fingerprint_changed\", ...}"
+         }
+       ]
+     }
+   
+   If tls_fingerprint_auto_retry=true:
+     The new fingerprint is accepted and the operation is retried
+     automatically. If the retry also fails, the failure is reported
+     with info_code TLS_FINGERPRINT_CHANGED_RETRYING.
+
+2. API operations with tls_fingerprint_verification=false:
+   The new fingerprint is accepted silently, a warning is logged,
+   and the operation proceeds normally.
+
+Note: For terminal (UI) connections on fingerprint change, the user is
+presented with an interactive prompt offering options to accept, disable
+verification, or cancel. This interactive prompt is not available via the API.
+
+EXPIRED CERTIFICATE ERROR
+
+When connecting to a site with an expired TLS certificate and tls_allow_expired
+is false, the API operation fails with:
+
+{
+  "status": "error",
+  "error": "tls_certificate_expired",
+  "error_code": "TLS_CERTIFICATE_EXPIRED",
+  "message": "TLS certificate has expired N days ago. Enable 'allow expired' in site settings or renew the certificate.",
+  "site": "SITE1",
+  "expired_days": 14,
+  "allow_expired_available": true
+}
+
+To resolve: set tls_allow_expired to true via PATCH /sites/SITE1, or renew the
+site's TLS certificate.
 
 - Send a raw command
     POST /raw

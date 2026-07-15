@@ -96,9 +96,18 @@ void SiteStatusScreen::redraw() {
   vv->putStr(i++, 1, "Upload   last 24 hours: " + util::parseSize(sizeupday) + ", " +
                  std::to_string(filesupday) + " files - All time: " + util::parseSize(sizeupall) + ", " +
                  std::to_string(filesupall) + " files");
-  vv->putStr(i++, 1, "Download last 24 hours: " + util::parseSize(sizedownday) + ", " +
-                 std::to_string(filesdownday) + " files - All time: " + util::parseSize(sizedownall) + ", " +
-                 std::to_string(filesdownall) + " files");
+vv->putStr(i++, 1, "Download last 24 hours: " + util::parseSize(sizedownday) + ", " +
+                   std::to_string(filesdownday) + " files - All time: " + util::parseSize(sizedownall) + ", " +
+                   std::to_string(filesdownall) + " files");
+  ++i;
+  if (site->getTLSMode() != TLSMode::NONE) {
+    std::string tlsfp = site->getTLSFingerprint();
+    if (!tlsfp.empty()) {
+      vv->putStr(i++, 1, "TLS Fingerprint:");
+      vv->putStr(i++, 1, "  " + tlsfp);
+      vv->putStr(i++, 1, "  Verification: " + std::string(site->getTLSFingerprintVerification() ? "Enabled" : "Disabled"));
+    }
+  }
 }
 
 bool SiteStatusScreen::keyPressed(unsigned int ch) {

@@ -17,10 +17,15 @@ class SiteManager {
     int defaultmaxlogins;
     int defaultmaxup;
     int defaultmaxdown;
-    unsigned int defaultmaxidletime;
-    int defaultssltransfer;
-    TLSMode defaulttlsmode;
-  public:
+unsigned int defaultmaxidletime;
+  int defaultssltransfer;
+  TLSMode defaulttlsmode;
+  bool defaulttlsfingerprintverification;
+  bool defaulttlsfingerprintautoretry;
+  bool defaultrequirevalidcert;
+  bool defaulttlsallowexpired;
+  int defaulttlsexpirywarn;
+ public:
     SiteManager();
     int getNumSites() const;
     std::shared_ptr<Site> createNewSite() const;
@@ -45,9 +50,19 @@ class SiteManager {
     void setDefaultMaxIdleTime(unsigned int);
     TLSMode getDefaultTLSMode() const;
     void setDefaultTLSMode(TLSMode mode);
-    int getDefaultSSLTransferPolicy() const;
-    void setDefaultSSLTransferPolicy(int);
-    void sortSites();
+int getDefaultSSLTransferPolicy() const;
+  void setDefaultSSLTransferPolicy(int);
+  bool getDefaultTLSFingerprintVerification() const;
+  void setDefaultTLSFingerprintVerification(bool enabled);
+  bool getDefaultTLSFingerprintAutoRetry() const;
+  void setDefaultTLSFingerprintAutoRetry(bool enabled);
+  bool getDefaultRequireValidCert() const;
+  void setDefaultRequireValidCert(bool enabled);
+  bool getDefaultTLSAllowExpired() const;
+  void setDefaultTLSAllowExpired(bool enabled);
+  int getDefaultTLSExpiryWarn() const;
+  void setDefaultTLSExpiryWarn(int days);
+  void sortSites();
     void proxyRemoved(const std::string &);
     void resetSitePairsForSite(const std::string &);
     void addExceptSourceForSite(const std::string &, const std::string &);

@@ -228,6 +228,25 @@ public:
    */
   bool getSSLSessionReused(int sockid) const;
 
+  /* Check TLS certificate hostname match against configured site address.
+   * @param sockid: The socket identifier.
+   * @param hostname: The expected hostname from site config.
+   * @return: true if hostname matches, false otherwise.
+   */
+  bool checkTLSCertHostname(int sockid, const std::string& hostname) const;
+
+  /* Check TLS certificate expiry.
+   * @param sockid: The socket identifier.
+   * @return: days until expiry, negative if expired.
+   */
+  int checkTLSCertExpiry(int sockid) const;
+
+  /* Check TLS certificate chain trust against system CA store.
+   * @param sockid: The socket identifier.
+   * @return: true if trusted, false otherwise.
+   */
+  bool checkTLSCertTrust(int sockid) const;
+
   /* Get the session key stored for session reuse for a specific socket.
    * @param sockid: The socket identifier.
    * @return: the session key, or -1 if none was found

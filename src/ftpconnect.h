@@ -20,6 +20,7 @@ public:
   int handedOver();
   Address getAddress() const;
   bool isPrimary() const;
+  std::string getTLSFingerprint() const;
   void disengage();
   void tickIntern();
 private:
@@ -29,8 +30,9 @@ private:
   void FDInterInfo(int sockid, const std::string& info) override;
   void FDInterDisconnected(int sockid, Core::DisconnectType reason, const std::string& details) override;
   void FDFail(int sockid, const std::string& error) override;
-  void FDSSLSuccess(int sockid, const std::string& cipher) override;
+  void FDSSLSuccess(int sockid, const std::string& cipher, const std::string& fingerprint) override;
   void proxySessionInit();
+  std::string tlsfingerprint;
   int id;
   FTPConnectOwner * owner;
   unsigned int databuflen;

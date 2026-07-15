@@ -372,6 +372,47 @@ std::string proxyTypeToString(int type) {
   return "<unknown proxy type " + std::to_string(type) + ">";
 }
 
+nlohmann::json createFingerprintChangedError(const std::string& sitename,
+                                              const std::string& oldfp,
+                                              const std::string& newfp,
+                                              bool willRetry) {
+  nlohmann::json response;
+  
+  if (willRetry) {
+    response["status"] = "ok";
+    response["info"] = "tls_fingerprint_changed_retrying";
+    response["info_code"] = "TLS_FINGERPRINT_CHANGED_RETRYING";
+    response["message"] = "TLS certificate fingerprint changed. Accepted and retrying.";
+  } else {
+    response["status"] = "error";
+    response["error"] = "tls_fingerprint_changed";
+    response["error_code"] = "TLS_FINGERPRINT_CHANGED";
+    response["message"] = "TLS certificate fingerprint changed. Operation aborted. Accept the new fingerprint or disable verification and retry.";
+  }
+  
+  response["site"] = sitename;
+  response["verification_enabled"] = true;
+  response["old_fingerprint"] = oldfp;
+  response["new_fingerprint"] = newfp;
+  response["auto_accepted"] = willRetry;
+  response["auto_retry_enabled"] = willRetry;
+  response["retry_recommended"] = !willRetry;
+  
+  return response;
+}
+
+nlohmann::json createExpiredCertError(const std::string& sitename, int expdays) {
+  nlohmann::json response;
+  response["status"] = "error";
+  response["error"] = "tls_certificate_expired";
+  response["error_code"] = "TLS_CERTIFICATE_EXPIRED";
+  response["message"] = "TLS certificate has expired " + std::to_string(expdays) + " days ago. Enable 'allow expired' in site settings or renew the certificate.";
+  response["site"] = sitename;
+  response["expired_days"] = expdays;
+  response["allow_expired_available"] = true;
+  return response;
+}
+
 std::string profileToString(SpreadProfile profile) {
   switch (profile) {
     case SPREAD_RACE:
@@ -882,6 +923,18 @@ void updateSite(std::shared_ptr<Site>& site, nlohmann::json jsondata, bool add) 
     else if (it.key() == "proxy_name") {
       site->setProxy(it.value());
     }
+    else if (it.key() == "tls_fingerprint_verification") {
+      site->setTLSFingerprintVerification(it.value());
+    }
+    else if (it.key() == "tls_fingerprint_auto_retry") {
+      site->setTLSFingerprintAutoRetry(it.value());
+    }
+    else if (it.key() == "tls_allow_expired") {
+      site->setTLSAllowExpired(it.value());
+    }
+    else if (it.key() == "tls_require_valid_cert") {
+      site->setRequireValidCert(it.value());
+    }
     else {
       throw std::range_error("Unrecognized key: " + it.key());
     }
@@ -1179,6 +1232,11 @@ void RestApi::handleSiteGet(RestApiCallback* cb, int connrequestid, const http::
   j["list_command"] = listCommandToString(site->getListCommand());
   j["tls_mode"] = tlsModeToString(site->getTLSMode());
   j["tls_transfer_policy"] = tlsTransferPolicyToString(site->getSSLTransferPolicy());
+  j["tls_fingerprint"] = site->getTLSFingerprint();
+  j["tls_fingerprint_verification"] = site->getTLSFingerprintVerification();
+  j["tls_fingerprint_auto_retry"] = site->getTLSFingerprintAutoRetry();
+  j["tls_allow_expired"] = site->getTLSAllowExpired();
+  j["tls_require_valid_cert"] = site->getRequireValidCert();
   j["transfer_protocol"] = transferProtocolToString(site->getTransferProtocol());
   j["sscn"] = site->supportsSSCN();
   j["cpsv"] = site->supportsCPSV();
@@ -2225,7 +2283,28 @@ bool RestApi::requestReady(void* service, int servicerequestid) {
       SiteLogic* sl = static_cast<SiteLogic*>(service);
       bool status = sl->requestStatus(servicerequestid);
       if (!status) {
-        request->failures.emplace_back(service, "failed");
+        if (sl->hasFingerprintError(servicerequestid)) {
+          std::string oldfp = sl->getFingerprintErrorOld(servicerequestid);
+          std::string newfp = sl->getFingerprintErrorNew(servicerequestid);
+          std::shared_ptr<Site> site = sl->getSite();
+          nlohmann::json response;
+          if (site && site->getTLSFingerprintAutoRetry()) {
+            response = createFingerprintChangedError(site->getName(), oldfp, newfp, true);
+          }
+          else {
+            response = createFingerprintChangedError(site->getName(), oldfp, newfp, false);
+          }
+          request->failures.emplace_back(service, response.dump());
+        }
+        else if (sl->hasExpiredCertError(servicerequestid)) {
+          std::string sitename = sl->getExpiredCertErrorSite(servicerequestid);
+          int expdays = sl->getExpiredCertErrorDays(servicerequestid);
+          nlohmann::json response = createExpiredCertError(sitename, expdays);
+          request->failures.emplace_back(service, response.dump());
+        }
+        else {
+          request->failures.emplace_back(service, "failed");
+        }
       }
       else {
         std::string result = sl->getRawCommandResult(servicerequestid);
@@ -2243,8 +2322,36 @@ bool RestApi::requestReady(void* service, int servicerequestid) {
       SiteLogic* sl = static_cast<SiteLogic*>(service);
       bool status = sl->requestStatus(servicerequestid);
       if (!status) {
-        http::Response response(502);
-        response.appendHeader("Content-Length", "0");
+        http::Response response;
+        if (sl->hasFingerprintError(servicerequestid)) {
+          std::string oldfp = sl->getFingerprintErrorOld(servicerequestid);
+          std::string newfp = sl->getFingerprintErrorNew(servicerequestid);
+          std::shared_ptr<Site> site = sl->getSite();
+          nlohmann::json j;
+          if (site && site->getTLSFingerprintAutoRetry()) {
+            j = createFingerprintChangedError(site->getName(), oldfp, newfp, true);
+          }
+          else {
+            j = createFingerprintChangedError(site->getName(), oldfp, newfp, false);
+          }
+          response = http::Response(200);
+          std::string jsondump = j.dump(2, ' ', false, nlohmann::json::error_handler_t::replace);
+          response.setBody(std::vector<char>(jsondump.begin(), jsondump.end()));
+          response.addHeader("Content-Type", "application/json");
+        }
+        else if (sl->hasExpiredCertError(servicerequestid)) {
+          std::string sitename = sl->getExpiredCertErrorSite(servicerequestid);
+          int expdays = sl->getExpiredCertErrorDays(servicerequestid);
+          nlohmann::json j = createExpiredCertError(sitename, expdays);
+          response = http::Response(200);
+          std::string jsondump = j.dump(2, ' ', false, nlohmann::json::error_handler_t::replace);
+          response.setBody(std::vector<char>(jsondump.begin(), jsondump.end()));
+          response.addHeader("Content-Type", "application/json");
+        }
+        else {
+          response = http::Response(502);
+          response.appendHeader("Content-Length", "0");
+        }
         request->cb->requestHandled(request->connrequestid, response);
       }
       else {
@@ -2284,8 +2391,36 @@ bool RestApi::requestReady(void* service, int servicerequestid) {
       SiteLogic* sl = static_cast<SiteLogic*>(service);
       bool status = sl->requestStatus(servicerequestid);
       if (!status) {
-        http::Response response(502);
-        response.appendHeader("Content-Length", "0");
+        http::Response response;
+        if (sl->hasFingerprintError(servicerequestid)) {
+          std::string oldfp = sl->getFingerprintErrorOld(servicerequestid);
+          std::string newfp = sl->getFingerprintErrorNew(servicerequestid);
+          std::shared_ptr<Site> site = sl->getSite();
+          nlohmann::json j;
+          if (site && site->getTLSFingerprintAutoRetry()) {
+            j = createFingerprintChangedError(site->getName(), oldfp, newfp, true);
+          }
+          else {
+            j = createFingerprintChangedError(site->getName(), oldfp, newfp, false);
+          }
+          response = http::Response(200);
+          std::string jsondump = j.dump(2, ' ', false, nlohmann::json::error_handler_t::replace);
+          response.setBody(std::vector<char>(jsondump.begin(), jsondump.end()));
+          response.addHeader("Content-Type", "application/json");
+        }
+        else if (sl->hasExpiredCertError(servicerequestid)) {
+          std::string sitename = sl->getExpiredCertErrorSite(servicerequestid);
+          int expdays = sl->getExpiredCertErrorDays(servicerequestid);
+          nlohmann::json j = createExpiredCertError(sitename, expdays);
+          response = http::Response(200);
+          std::string jsondump = j.dump(2, ' ', false, nlohmann::json::error_handler_t::replace);
+          response.setBody(std::vector<char>(jsondump.begin(), jsondump.end()));
+          response.addHeader("Content-Type", "application/json");
+        }
+        else {
+          response = http::Response(502);
+          response.appendHeader("Content-Length", "0");
+        }
         request->cb->requestHandled(request->connrequestid, response);
       }
       else {

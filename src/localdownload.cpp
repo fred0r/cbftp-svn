@@ -128,7 +128,7 @@ void LocalDownload::FDInterDisconnected(int sockid, Core::DisconnectType reason,
   }
 }
 
-void LocalDownload::FDSSLSuccess(int sockid, const std::string& cipher) {
+void LocalDownload::FDSSLSuccess(int sockid, const std::string& cipher, const std::string& fingerprint) {
   if (this->sockid == -1 || sockid != this->sockid) {
     return;
   }
