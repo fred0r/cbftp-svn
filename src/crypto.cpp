@@ -7,6 +7,7 @@
 #include <openssl/sha.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
+#include <openssl/crypto.h>
 
 #define SALT_LENGTH 8
 #define SALT_STRING_LENGTH 16
@@ -78,6 +79,7 @@ void Crypto::encrypt(const Core::BinaryData & indata, const Core::BinaryData & p
   EVP_EncryptUpdate(ctx, &outdata[SALT_STRING_LENGTH], &resultlen, &indata[0], indata.size());
   EVP_EncryptFinal_ex(ctx, &outdata[SALT_STRING_LENGTH + resultlen], &finallen);
   outdata.resize(SALT_STRING_LENGTH + resultlen + finallen);
+  OPENSSL_cleanse(tmpkeyiv, sizeof(tmpkeyiv));
   EVP_CIPHER_CTX_free(ctx);
 }
 
@@ -110,6 +112,7 @@ void Crypto::decrypt(const Core::BinaryData & indata, const Core::BinaryData & p
                     indata.size() - SALT_STRING_LENGTH);
   EVP_DecryptFinal_ex(ctx, &outdata[writelen], &finalwritelen);
   outdata.resize(writelen + finalwritelen);
+  OPENSSL_cleanse(tmpkeyiv, sizeof(tmpkeyiv));
   EVP_CIPHER_CTX_free(ctx);
 }
 

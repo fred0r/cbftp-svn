@@ -1,6 +1,7 @@
 #include <unistd.h>
 #include <csignal>
 #include <cstdio>
+#include <sys/resource.h>
 
 #include "core/workmanager.h"
 #include "core/iomanager.h"
@@ -93,6 +94,8 @@ void sighandler(int sig) {
 } // namespace
 
 int main(int argc, char* argv[]) {
+  struct rlimit rl = {0, 0};
+  setrlimit(RLIMIT_CORE, &rl);
   Core::registerSignalHandler(SIGABRT, sighandler);
   Core::registerSignalHandler(SIGTERM, sighandler);
   Core::registerSignalHandler(SIGINT, sighandler);

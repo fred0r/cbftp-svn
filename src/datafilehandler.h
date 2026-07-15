@@ -25,6 +25,7 @@ private:
   DataFileState state;
 public:
   DataFileHandler();
+  ~DataFileHandler();
   DataFileState getState() const;
   bool tryDecrypt(const std::string& key);
   void writeFile();

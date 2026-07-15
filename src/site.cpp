@@ -623,6 +623,9 @@ void Site::setUser(const std::string & user) {
 }
 
 void Site::setPass(const std::string & pass) {
+  if (!this->pass.empty()) {
+    OPENSSL_cleanse(&this->pass[0], this->pass.size());
+  }
   this->pass = pass;
 }
 

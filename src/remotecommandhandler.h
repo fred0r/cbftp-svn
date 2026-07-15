@@ -50,6 +50,7 @@ private:
   JobStartResult parseRace(const std::vector<std::string> &, int);
 public:
   RemoteCommandHandler();
+  ~RemoteCommandHandler();
   bool isEnabled() const;
   bool isEncrypted() const;
   int getUDPPort() const;

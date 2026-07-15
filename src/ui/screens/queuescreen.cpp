@@ -29,13 +29,13 @@ QueueScreen::QueueScreen(Ui* ui) : UIWindow(ui, "QueueScreen"), table(*vv) {
   keybinds.addBind('t', KEYACTION_ENTER, "Start selected");
   keybinds.addBind('T', KEYACTION_START_ALL, "Start all");
   keybinds.addBind(KEY_DC, KEYACTION_DELETE, "Remove");
-  keybinds.addBind('c', KEYACTION_CLEAR, "Clear all");
+  keybinds.addBind('c', KEYACTION_CONTINUE, "Continue");
   keybinds.addBind('q', KEYACTION_BACK_CANCEL, "Return");
   keybinds.addBind('+', KEYACTION_MOVE_UP, "Move up");
   keybinds.addBind('-', KEYACTION_MOVE_DOWN, "Move down");
   keybinds.addBind('s', KEYACTION_STOP_RELEASE, "Stop after release");
   keybinds.addBind('S', KEYACTION_STOP_FILE, "Stop after file");
-  keybinds.addBind('C', KEYACTION_CONTINUE, "Continue");
+  keybinds.addBind('C', KEYACTION_CLEAR, "Clear all");
 }
 
 QueueScreen::~QueueScreen() {

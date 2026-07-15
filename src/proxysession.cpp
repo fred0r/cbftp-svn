@@ -4,6 +4,7 @@
 #define _POSIX_C_SOURCE 200809L
 #endif
 
+#include <openssl/crypto.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
@@ -86,6 +87,10 @@ ParsedAddress parseAddress(char* data) {
 ProxySession::ProxySession() :
   state(PROXYSESSION_INIT)
 {
+}
+
+ProxySession::~ProxySession() {
+  OPENSSL_cleanse(senddata, sizeof(senddata));
 }
 
 void ProxySession::prepareConnect(Proxy* proxy, const Address& addr) {

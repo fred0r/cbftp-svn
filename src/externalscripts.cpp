@@ -1,5 +1,6 @@
 #include "externalscripts.h"
 
+#include <openssl/crypto.h>
 #include <string>
 
 #include "datafilehandler.h"
@@ -19,6 +20,12 @@ ExternalScript::ExternalScript(const std::string& name, const Path& path, int id
 
 RunningScript::RunningScript(int pid, const std::string& name, const std::string& token) : pid(pid), name(name), tempauthtoken(token) {
 
+}
+
+RunningScript::~RunningScript() {
+  if (!tempauthtoken.empty()) {
+    OPENSSL_cleanse(&tempauthtoken[0], tempauthtoken.size());
+  }
 }
 
 ExternalScripts::ExternalScripts(const std::string& name) : name(name) {

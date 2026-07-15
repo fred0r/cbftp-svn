@@ -25,6 +25,7 @@ class Proxy;
 class ProxySession {
 public:
   ProxySession();
+  ~ProxySession();
   void prepareConnect(Proxy* proxy, const Address& addr);
   void prepareListen(Proxy* proxy, Core::AddressFamily addrfam);
   int instruction() const;

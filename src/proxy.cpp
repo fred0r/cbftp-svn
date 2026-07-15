@@ -1,5 +1,7 @@
 #include "proxy.h"
 
+#include <openssl/crypto.h>
+
 Proxy::Proxy() {
 
 }
@@ -11,6 +13,12 @@ Proxy::Proxy(const std::string& name) : name(name), addr("127.0.0.1"),
     activeportfirst(47500), activeportlast(47600), nextport(activeportfirst)
 {
 
+}
+
+Proxy::~Proxy() {
+  if (!pass.empty()) {
+    OPENSSL_cleanse(&pass[0], pass.size());
+  }
 }
 
 std::string Proxy::getName() const {
@@ -99,6 +107,9 @@ void Proxy::setUser(const std::string& user) {
 }
 
 void Proxy::setPass(const std::string& pass) {
+  if (!this->pass.empty()) {
+    OPENSSL_cleanse(&this->pass[0], this->pass.size());
+  }
   this->pass = pass;
 }
 

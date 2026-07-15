@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <cstdlib>
 #include <cstdio>
+#include <openssl/crypto.h>
 
 #include "crypto.h"
 #include "filesystem.h"
@@ -56,6 +57,23 @@ DataFileHandler::DataFileHandler() : state(DataFileState::NOT_EXISTING) {
   }
   state = DataFileState::EXISTS_PLAIN;
   parseDecryptedFile(rawdata);
+}
+
+DataFileHandler::~DataFileHandler() {
+  if (!key.empty()) {
+    OPENSSL_cleanse(&key[0], key.size());
+  }
+  for (auto& line : decryptedlines) {
+    if (!line.empty()) {
+      OPENSSL_cleanse(&line[0], line.size());
+    }
+  }
+  if (!rawdata.empty()) {
+    OPENSSL_cleanse(rawdata.data(), rawdata.size());
+  }
+  if (!filehash.empty()) {
+    OPENSSL_cleanse(filehash.data(), filehash.size());
+  }
 }
 
 Path DataFileHandler::getDataDir() {

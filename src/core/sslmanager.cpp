@@ -308,6 +308,7 @@ SSL_CTX* createContext() {
     getLogger()->log("SSLManager", "SSL_CTX_new failed: " + SSLErrors(), LogLevel::ERROR);
     return nullptr;
   }
+  SSL_CTX_set_options(ctx, SSL_OP_NO_TICKET);
 /*  if (!SSL_CTX_set_cipher_list(ctx, "DEFAULT:!SEED")) {
     getLogger()->log("SSLManager", "SSL_CTX_set_cipher_list failed: " + SSLErrors(), LogLevel::ERROR);
     SSL_CTX_free(ctx);
@@ -360,6 +361,14 @@ void SSLManager::cleanupThread() {
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L
   OPENSSL_thread_stop();
 #endif
+}
+
+void SSLManager::cleanup() {
+  std::lock_guard<std::recursive_mutex> lock(g_lock);
+  if (g_clientcontext) {
+    SSL_CTX_free(g_clientcontext);
+    g_clientcontext = nullptr;
+  }
 }
 
 SSL_CTX* SSLManager::getClientSSLCTX() {

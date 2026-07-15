@@ -33,6 +33,9 @@ public:
    */
   static void cleanupThread();
 
+  /* Free global OpenSSL resources */
+  static void cleanup();
+
   static SSL_CTX* getClientSSLCTX();
   static SSL_CTX* getServerSSLCTX();
   static bool addCertKeyPair(EVP_PKEY* pkey, X509* x509);

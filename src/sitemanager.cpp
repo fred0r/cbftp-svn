@@ -1,5 +1,6 @@
 #include "sitemanager.h"
 
+#include <openssl/crypto.h>
 #include <cassert>
 #include <sstream>
 #include <fstream>
@@ -43,6 +44,15 @@ SiteManager::SiteManager() :
   defaulttlsallowexpired(false),
   defaulttlsexpirywarn(14)
 {
+}
+
+SiteManager::~SiteManager() {
+  if (!defaultpassword.empty()) {
+    OPENSSL_cleanse(&defaultpassword[0], defaultpassword.size());
+  }
+  if (!defaultusername.empty()) {
+    OPENSSL_cleanse(&defaultusername[0], defaultusername.size());
+  }
 }
 
 int SiteManager::getNumSites() const {
@@ -137,6 +147,9 @@ std::string SiteManager::getDefaultPassword() const {
 }
 
 void SiteManager::setDefaultPassword(const std::string & password) {
+  if (!defaultpassword.empty()) {
+    OPENSSL_cleanse(&defaultpassword[0], defaultpassword.size());
+  }
   defaultpassword = password;
 }
 

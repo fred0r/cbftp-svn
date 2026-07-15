@@ -1033,6 +1033,11 @@ RestApi::RestApi() : nextrequestid(0), notifyoncurrentrequest(false) {
 
 RestApi::~RestApi() {
   global->getTickPoke()->stopPoke(this, 0);
+  for (const auto& token : tempauthtokens) {
+    if (!token.empty()) {
+      OPENSSL_cleanse(const_cast<char*>(&token[0]), token.size());
+    }
+  }
 }
 
 void RestApi::handleFileGet(RestApiCallback* cb, int connrequestid, const http::Request& request) {

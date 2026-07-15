@@ -1,5 +1,6 @@
 #include "remotecommandhandler.h"
 
+#include <openssl/crypto.h>
 #include <vector>
 #include <list>
 
@@ -89,6 +90,12 @@ RemoteCommandHandler::RemoteCommandHandler() :
 {
 }
 
+RemoteCommandHandler::~RemoteCommandHandler() {
+  if (!password.empty()) {
+    OPENSSL_cleanse(&password[0], password.size());
+  }
+}
+
 bool RemoteCommandHandler::isEnabled() const {
   return enabled;
 }
@@ -110,6 +117,9 @@ bool RemoteCommandHandler::getListenAll() const {
 }
 
 void RemoteCommandHandler::setPassword(const std::string & newpass) {
+  if (!password.empty()) {
+    OPENSSL_cleanse(&password[0], password.size());
+  }
   password = newpass;
 }
 

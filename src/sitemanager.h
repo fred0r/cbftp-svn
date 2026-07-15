@@ -27,6 +27,7 @@ unsigned int defaultmaxidletime;
   int defaulttlsexpirywarn;
  public:
     SiteManager();
+    ~SiteManager();
     int getNumSites() const;
     std::shared_ptr<Site> createNewSite() const;
     void addSite(const std::shared_ptr<Site> &);

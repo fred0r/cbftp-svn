@@ -92,8 +92,11 @@ FTPConn::~FTPConn() {
   if (isConnected()) {
     iom->closeSocket(sockid);
   }
+  if (databuf) {
+    OPENSSL_cleanse(databuf, databuflen);
+    free(databuf);
+  }
   delete rawbuf;
-  free(databuf);
   clearConnectors();
 }
 

@@ -1,5 +1,7 @@
 #include "ftpconnect.h"
 
+#include <openssl/crypto.h>
+
 #include <cassert>
 
 #include "core/iomanager.h"
@@ -32,7 +34,10 @@ FTPConnect::FTPConnect(int id, FTPConnectOwner* owner, const Address& addr, Prox
 
 FTPConnect::~FTPConnect() {
   assert(!engaged); // must disengage before deleting; events may still be in the work queue
-  free(databuf);
+  if (databuf) {
+    OPENSSL_cleanse(databuf, databuflen);
+    free(databuf);
+  }
 }
 
 void FTPConnect::FDInterConnecting(int sockid, const std::string& addr) {

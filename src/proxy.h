@@ -19,6 +19,7 @@ class Proxy {
 public:
   Proxy();
   Proxy(const std::string& name);
+  ~Proxy();
   std::string getName() const;
   std::string getAddr() const;
   std::string getPort() const;

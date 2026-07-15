@@ -19,6 +19,7 @@ struct ExternalScript {
 
 struct RunningScript {
   RunningScript(int pid, const std::string& name, const std::string& token);
+  ~RunningScript();
   int pid;
   std::string name;
   std::string tempauthtoken;

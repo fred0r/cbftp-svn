@@ -135,7 +135,8 @@ as "Queue: N"). In the queue screen you can:
 - Press + to move the selected item up in the queue
 - Press - to move the selected item down in the queue
 - Press Delete to remove an item (with y/n confirmation)
-- Press c to clear the entire queue (with y/n confirmation)
+- Press c to continue stopped transfers
+- Press C to clear the entire queue (with y/n confirmation)
 
 Running transfers show a dot animation (FXP. -> FXP.. -> FXP...),
 failed transfers show an x prefix (xFXP). Items stay in the queue

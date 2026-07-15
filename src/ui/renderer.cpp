@@ -122,11 +122,17 @@ void Renderer::bell() {
 }
 
 void Renderer::hideCursor() {
-  uiqueue.push(UICommand(UI_COMMAND_CURSOR_HIDE));
+  if (cursorVisible) {
+    uiqueue.push(UICommand(UI_COMMAND_CURSOR_HIDE));
+    cursorVisible = false;
+  }
 }
 
 void Renderer::showCursor() {
-  uiqueue.push(UICommand(UI_COMMAND_CURSOR_SHOW));
+  if (!cursorVisible) {
+    uiqueue.push(UICommand(UI_COMMAND_CURSOR_SHOW));
+    cursorVisible = true;
+  }
 }
 
 void Renderer::moveCursor(unsigned int row, unsigned int col) {

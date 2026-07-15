@@ -54,4 +54,5 @@ private:
   unsigned int row;
   bool initret;
   bool dead;
+  bool cursorVisible = false;
 };

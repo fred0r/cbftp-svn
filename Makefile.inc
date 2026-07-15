@@ -35,14 +35,15 @@ ROOT_DIR:=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 
 HAS_SVN := $(shell svn info $(ROOT_DIR) > /dev/null 2>&1; echo $$?)
 REDIST_VERSION := $(shell cat $(ROOT_DIR)/.version 2>/dev/null)
+GIT_HASH := $(shell git -C $(ROOT_DIR) rev-parse --short HEAD 2>/dev/null || echo "nogit")
 
 ifeq ($(HAS_SVN), 0)
-VERSION := "\"svn:r$(shell svn info $(ROOT_DIR)|grep Revision|awk '{ print $$2 }')\""
+VERSION := "\"r$(shell svn info $(ROOT_DIR)|grep Revision|awk '{ print $$2 }')-franken-$(GIT_HASH)\""
 SVN_ROOT_DIR := $(shell svn info $(ROOT_DIR)|grep 'Working Copy Root'|awk '{print $$5 }')
 else ifneq ($(REDIST_VERSION),)
-VERSION := "\"redist:r$(REDIST_VERSION)\""
+VERSION := "\"r$(REDIST_VERSION)-franken-$(GIT_HASH)\""
 else
-VERSION := "\"unknown\""
+VERSION := "\"unknown-franken-$(GIT_HASH)\""
 endif
 
 DATE := "\"$(shell date)\""
@@ -77,11 +78,38 @@ ifndef LINKFLAGS
   endif
   ifneq ($(filter $(UNAME_S),FreeBSD),)
     FREEBSD=1
+    AR = llvm-ar
+    RANLIB = llvm-ranlib
   endif
   ifneq ($(DEBIAN)$(FREEBSD),)
     LINKFLAGS+=-lncursesw
   else
-    LINKFLAGS+=-lncurses
+    NCURSES_CFLAGS := $(shell pkg-config --cflags ncurses 2>/dev/null)
+    NCURSES_LIBS := $(shell pkg-config --libs ncurses 2>/dev/null)
+    ifeq ($(NCURSES_CFLAGS),)
+      ifneq ($(wildcard /usr/pkg/include/ncurses/ncurses.h),)
+        NCURSES_CFLAGS := -I/usr/pkg/include -DNCURSES_SUBDIR
+        NCURSES_LIBS := -L/usr/pkg/lib -Wl,-rpath,/usr/pkg/lib
+      else ifneq ($(wildcard /usr/pkg/include/ncurses.h),)
+        NCURSES_CFLAGS := -I/usr/pkg/include
+        NCURSES_LIBS := -L/usr/pkg/lib -Wl,-rpath,/usr/pkg/lib
+      else ifneq ($(wildcard /usr/local/include/ncurses/ncurses.h),)
+        NCURSES_CFLAGS := -I/usr/local/include -DNCURSES_SUBDIR
+        NCURSES_LIBS := -L/usr/local/lib -Wl,-rpath,/usr/local/lib
+      else ifneq ($(wildcard /usr/local/include/ncurses.h),)
+        NCURSES_CFLAGS := -I/usr/local/include
+        NCURSES_LIBS := -L/usr/local/lib -Wl,-rpath,/usr/local/lib
+      endif
+    endif
+    CXXFLAGS += $(NCURSES_CFLAGS)
+    ifneq ($(NCURSES_LIBS),)
+      LINKFLAGS += $(NCURSES_LIBS)
+      ifeq ($(findstring -l,$(NCURSES_LIBS)),)
+        LINKFLAGS += -lncurses
+      endif
+    else
+      LINKFLAGS += -lncurses
+    endif
   endif
 else
   $(info Using LINKFLAGS provided by shell)
