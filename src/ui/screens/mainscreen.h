@@ -55,6 +55,7 @@ private:
   FocusableArea * focusedarea;
   FocusableArea * defocusedarea;
   std::string deletesite;
+  unsigned int restore_tj_id;
   MenuSelectOption msop;
   MenuSelectOption msosj;
   MenuSelectOption msotj;

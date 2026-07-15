@@ -247,6 +247,7 @@ Engine::Engine() :
   failboard(std::make_shared<ScoreBoard>()),
   maxavgspeed(1024 * 1024),
   pokeregistered(false),
+  nextqueueid(1),
   nextid(1),
   maxpointsfilesize(2000),
   maxpointsavgspeed(3000),
@@ -266,6 +267,151 @@ Engine::Engine() :
 
 Engine::~Engine() {
 
+}
+
+unsigned int Engine::addToQueue(const std::shared_ptr<QueuedItem>& item) {
+  item->id = nextqueueid++;
+  transferqueue.push_back(item);
+  return item->id;
+}
+
+bool Engine::isInQueue(const QueuedItem& item) const {
+  for (auto it = transferqueue.begin(); it != transferqueue.end(); ++it) {
+    const QueuedItem& q = **it;
+    if (q.direction != item.direction) continue;
+    if (q.srcSite != item.srcSite) continue;
+    if (q.srcPath != item.srcPath) continue;
+    if (q.fileName != item.fileName) continue;
+    if (q.direction == QueuedItem::Direction::DOWNLOAD) {
+      if (q.localDstPath.toString() != item.localDstPath.toString()) continue;
+    }
+    else {
+      if (q.dstSite != item.dstSite) continue;
+      if (q.dstPath != item.dstPath) continue;
+    }
+    return true;
+  }
+  return false;
+}
+
+void Engine::removeFromQueue(unsigned int id) {
+  for (auto it = transferqueue.begin(); it != transferqueue.end(); ++it) {
+    if ((*it)->id == id) {
+      transferqueue.erase(it);
+      return;
+    }
+  }
+}
+
+void Engine::clearQueue() {
+  transferqueue.clear();
+}
+
+size_t Engine::getQueueSize() const {
+  return transferqueue.size();
+}
+
+std::list<std::shared_ptr<QueuedItem>>::const_iterator Engine::getQueueBegin() const {
+  return transferqueue.begin();
+}
+
+std::list<std::shared_ptr<QueuedItem>>::const_iterator Engine::getQueueEnd() const {
+  return transferqueue.end();
+}
+
+std::shared_ptr<QueuedItem> Engine::getQueuedItemById(unsigned int id) const {
+  for (auto it = transferqueue.begin(); it != transferqueue.end(); ++it) {
+    if ((*it)->id == id) return *it;
+  }
+  return nullptr;
+}
+
+bool Engine::moveQueueItemUp(unsigned int id) {
+  for (auto it = transferqueue.begin(); it != transferqueue.end(); ++it) {
+    if ((*it)->id == id) {
+      if (it == transferqueue.begin()) return false;
+      auto prev = std::prev(it);
+      transferqueue.splice(prev, transferqueue, it);
+      return true;
+    }
+  }
+  return false;
+}
+
+bool Engine::moveQueueItemDown(unsigned int id) {
+  for (auto it = transferqueue.begin(); it != transferqueue.end(); ++it) {
+    if ((*it)->id == id) {
+      auto next = std::next(it);
+      if (next == transferqueue.end()) return false;
+      transferqueue.splice(std::next(next), transferqueue, it);
+      return true;
+    }
+  }
+  return false;
+}
+
+void Engine::stopTransferJobAfterRelease(unsigned int queueId) {
+  std::shared_ptr<QueuedItem> qi = getQueuedItemById(queueId);
+  if (qi && qi->transferJobId) {
+    std::shared_ptr<TransferJob> tj = getTransferJob(qi->transferJobId);
+    if (tj && !tj->isDone()) {
+      tj->stopAfterRelease();
+    }
+  }
+}
+
+void Engine::stopTransferJobAfterFile(unsigned int queueId) {
+  std::shared_ptr<QueuedItem> qi = getQueuedItemById(queueId);
+  if (qi && qi->transferJobId) {
+    std::shared_ptr<TransferJob> tj = getTransferJob(qi->transferJobId);
+    if (tj && !tj->isDone()) {
+      tj->stopAfterFile();
+    }
+  }
+}
+
+void Engine::stopTopOfQueue(bool stopAfterRelease) {
+  if (transferqueue.empty()) return;
+  std::shared_ptr<QueuedItem> topItem = transferqueue.front();
+  if (topItem->transferJobId) {
+    std::shared_ptr<TransferJob> tj = getTransferJob(topItem->transferJobId);
+    if (tj && !tj->isDone()) {
+      if (stopAfterRelease) {
+        tj->stopAfterRelease();
+      } else {
+        tj->stopAfterFile();
+      }
+    }
+  }
+  for (auto it = transferqueue.begin(); it != transferqueue.end(); ++it) {
+    std::shared_ptr<QueuedItem> qi = *it;
+    if (qi->id == topItem->id) continue;
+    if (qi->transferJobId) {
+      std::shared_ptr<TransferJob> tj = getTransferJob(qi->transferJobId);
+      if (tj && !tj->isDone()) {
+        tj->abort();
+      }
+    }
+  }
+}
+
+JobStartResult Engine::startQueuedItem(const std::shared_ptr<QueuedItem>& item) {
+  JobStartResult result;
+  switch (item->direction) {
+    case QueuedItem::Direction::DOWNLOAD:
+      result = newTransferJobDownload(item->srcSite, Path(item->srcPath), item->srcSection, item->fileName, item->localDstPath, item->fileName);
+      break;
+    case QueuedItem::Direction::UPLOAD:
+      result = newTransferJobUpload(item->localDstPath, item->fileName, item->dstSite, Path(item->dstPath), item->dstSection, item->fileName);
+      break;
+    case QueuedItem::Direction::FXP:
+      result = newTransferJobFXP(item->srcSite, Path(item->srcPath), item->srcSection, item->fileName, item->dstSite, Path(item->dstPath), item->dstSection, item->fileName);
+      break;
+  }
+  if (result) {
+    item->transferJobId = result.id;
+  }
+  return result;
 }
 
 JobStartResult Engine::newSpreadJob(int profile, const std::string& release, const std::string& section, const std::list<std::string>& sites, bool reset, const std::list<std::string>& dlonlysites) {

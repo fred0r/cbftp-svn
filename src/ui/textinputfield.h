@@ -24,6 +24,8 @@ public:
   void moveCursorNextWord();
   void setText(const FmtString& text);
   void clear();
+  unsigned int getCursorPosition() const;
+  void setCursorPosition(unsigned int pos);
   void setVisibleLength(unsigned int);
 private:
   void construct(const FmtString& starttext, int, int, bool);

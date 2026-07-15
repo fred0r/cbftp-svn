@@ -9,6 +9,7 @@
 
 #include "core/eventreceiver.h"
 #include "joblist.h"
+#include "path.h"
 
 enum class PrioType;
 enum class SitePriority;
@@ -28,6 +29,41 @@ class Path;
 class SkipList;
 class ScoreBoardElement;
 class TransferStatus;
+
+struct QueuedItem {
+  enum class Direction { DOWNLOAD, UPLOAD, FXP };
+  Direction direction;
+  std::string srcSite;
+  std::string srcPath;
+  std::string srcSection;
+  std::string dstSite;
+  std::string dstPath;
+  std::string dstSection;
+  Path localDstPath;
+  std::string fileName;
+  bool isDirectory;
+  unsigned int id;
+  unsigned int transferJobId = 0;
+
+  std::string getDirectionLabel() const {
+    switch (direction) {
+      case Direction::DOWNLOAD: return "DL";
+      case Direction::UPLOAD:   return "UL";
+      case Direction::FXP:      return "FXP";
+    }
+    return "";
+  }
+
+  std::string getDisplaySource() const {
+    if (direction == Direction::UPLOAD) return "[local]";
+    return srcSite;
+  }
+
+  std::string getDisplayDest() const {
+    if (direction == Direction::DOWNLOAD) return localDstPath.toString();
+    return dstSite + ":" + dstPath;
+  }
+};
 
 struct JobStartResult {
   enum class JobStartState {
@@ -117,6 +153,20 @@ public:
   int getNextPreparedRaceStarterTimeRemaining() const;
   bool isIncompleteEnoughForDelete(const std::shared_ptr<Race> & race, const std::shared_ptr<SiteRace> & siterace) const;
   void transferFailed(const std::shared_ptr<TransferStatus> & ts, int err);
+  unsigned int addToQueue(const std::shared_ptr<QueuedItem>& item);
+  bool isInQueue(const QueuedItem& item) const;
+  JobStartResult startQueuedItem(const std::shared_ptr<QueuedItem>& item);
+  void removeFromQueue(unsigned int id);
+  void clearQueue();
+  size_t getQueueSize() const;
+  std::list<std::shared_ptr<QueuedItem>>::const_iterator getQueueBegin() const;
+  std::list<std::shared_ptr<QueuedItem>>::const_iterator getQueueEnd() const;
+  std::shared_ptr<QueuedItem> getQueuedItemById(unsigned int id) const;
+  bool moveQueueItemUp(unsigned int id);
+  bool moveQueueItemDown(unsigned int id);
+  void stopTransferJobAfterRelease(unsigned int queueId);
+  void stopTransferJobAfterFile(unsigned int queueId);
+  void stopTopOfQueue(bool stopAfterRelease);
   int getMaxSpreadJobsHistory() const;
   int getMaxTransferJobsHistory() const;
   void setMaxSpreadJobsHistory(int jobs);
@@ -157,6 +207,7 @@ public:
   void clearSkipListCaches();
   void rotateSpreadJobsHistory();
   void rotateTransferJobsHistory();
+  std::list<std::shared_ptr<QueuedItem>> transferqueue;
   JobList<std::shared_ptr<Race>> allraces;
   JobList<std::shared_ptr<Race>> currentraces;
   JobList<std::shared_ptr<Race>> finishedraces;
@@ -169,6 +220,7 @@ public:
   int maxavgspeed;
   bool pokeregistered;
   unsigned int dropped;
+  unsigned int nextqueueid;
   unsigned int nextid;
   int maxpointsfilesize;
   int maxpointsavgspeed;

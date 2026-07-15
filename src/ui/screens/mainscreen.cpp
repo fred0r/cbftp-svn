@@ -121,6 +121,7 @@ MainScreen::MainScreen(Ui* ui) : UIWindow(ui, "MainScreen"), msop(*vv), msosj(*v
   keybinds.addScope(KEYSCOPE_SITE, "When a site is selected");
   keybinds.addBind('A', KEYACTION_ADD_SITE, "Add site");
   keybinds.addBind('G', KEYACTION_GLOBAL_SETTINGS, "Global settings");
+  keybinds.addBind('Q', KEYACTION_QUEUE_SCREEN, "Transfer queue");
   keybinds.addBind('l', KEYACTION_EVENT_LOG, "Event log");
   keybinds.addBind('t', KEYACTION_ALL_TRANSFERS, "Transfers");
   keybinds.addBind('r', KEYACTION_ALL_SPREAD_JOBS, "All spread jobs");
@@ -189,6 +190,7 @@ void MainScreen::initialize(unsigned int row, unsigned int col) {
     focusedarea = &msos;
     msos.enterFocusFrom(0);
   }
+  restore_tj_id = 0;
   temphighlightline = false;
   init(row, col);
 }
@@ -287,6 +289,16 @@ void MainScreen::redraw() {
       }
       msotj.checkPointer();
       msotj.adjustLines(col - 3);
+      if (restore_tj_id) {
+        for (unsigned int i = 0; i < msotj.size(); i++) {
+          std::shared_ptr<MenuSelectOptionElement> e = msotj.getElement(i);
+          if (e && e->getId() == restore_tj_id) {
+            msotj.setPointer(e);
+            break;
+          }
+        }
+        restore_tj_id = 0;
+      }
       irow++;
     }
   }
@@ -331,6 +343,8 @@ void MainScreen::redraw() {
   else {
     activejobstext = "";
   }
+  unsigned int queuesize = global->getEngine()->getQueueSize();
+  activejobstext += "Queue: " + std::to_string(queuesize) + "  ";
   if (focusedarea == &msop && !msop.size()) {
     msop.reset();
     focusedarea = &msosj;
@@ -523,6 +537,7 @@ bool MainScreen::keyPressed(unsigned int ch) {
       }
       else if (msotj.isFocused()) {
         unsigned int id = msotj.getElement(msotj.getSelectionPointer())->getId();
+        restore_tj_id = id;
         ui->goTransferJobStatus(id);
       }
       else if (msop.isFocused()) {

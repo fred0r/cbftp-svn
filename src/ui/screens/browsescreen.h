@@ -50,6 +50,7 @@ private:
   void jumpSectionHotkey(int hotkey);
   void goSite(bool leftside, const std::string& site, const std::string& section = "");
   void loadExtraKeyBinds();
+  int getCurrentKeyScope() const;
   std::shared_ptr<BrowseScreenSub> left;
   std::shared_ptr<BrowseScreenSub> right;
   std::shared_ptr<BrowseScreenSub> active;

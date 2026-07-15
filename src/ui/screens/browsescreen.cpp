@@ -46,9 +46,11 @@ BrowseScreen::BrowseScreen(Ui* ui) : UIWindow(ui, "BrowseScreen"),
   sitekeybinds.addScope(KEYSCOPE_SPLIT_SITE_SITE, "When split browsing site-site");
   sitekeybinds.addScope(KEYSCOPE_SPLIT_SITE_LOCAL, "When split browsing site-local");
   sitekeybinds.addBind('t', KEYACTION_TRANSFER, "Transfer (FXP)", KEYSCOPE_SPLIT_SITE_SITE);
+  sitekeybinds.addBind('a', KEYACTION_QUEUE, "Queue (FXP)", KEYSCOPE_SPLIT_SITE_SITE);
   sitekeybinds.addBind('u', KEYACTION_COMPARE_UNIQUE, "Unique compare", KEYSCOPE_SPLIT_SITE_SITE);
   sitekeybinds.addBind('I', KEYACTION_COMPARE_IDENTICAL, "Identical compare", KEYSCOPE_SPLIT_SITE_SITE);
   sitekeybinds.addBind('t', KEYACTION_TRANSFER, "Transfer (Download)", KEYSCOPE_SPLIT_SITE_LOCAL);
+  sitekeybinds.addBind('a', KEYACTION_QUEUE, "Queue (Download)", KEYSCOPE_SPLIT_SITE_LOCAL);
   sitekeybinds.addBind('u', KEYACTION_COMPARE_UNIQUE, "Unique compare", KEYSCOPE_SPLIT_SITE_LOCAL);
   sitekeybinds.addBind('I', KEYACTION_COMPARE_IDENTICAL, "Identical compare", KEYSCOPE_SPLIT_SITE_LOCAL);
   sitekeybinds.addBind(27, KEYACTION_BACK_CANCEL, "Cancel");
@@ -60,6 +62,7 @@ BrowseScreen::BrowseScreen(Ui* ui) : UIWindow(ui, "BrowseScreen"),
   sitekeybinds.addBind('r', KEYACTION_SPREAD, "Spread");
   sitekeybinds.addBind('v', KEYACTION_VIEW_FILE, "View file");
   sitekeybinds.addBind('D', KEYACTION_DOWNLOAD, "Download");
+  sitekeybinds.addBind('a', KEYACTION_QUEUE, "Queue download");
   sitekeybinds.addBind('b', KEYACTION_BIND_SECTION, "Bind to section");
   sitekeybinds.addBind('s', KEYACTION_SORT, "Sort");
   sitekeybinds.addBind('S', KEYACTION_SORT_DEFAULT, "Default sort");
@@ -97,6 +100,7 @@ BrowseScreen::BrowseScreen(Ui* ui) : UIWindow(ui, "BrowseScreen"),
   localkeybinds.addBind('u', KEYACTION_COMPARE_UNIQUE, "Unique compare", KEYSCOPE_SPLIT_LOCAL_LOCAL);
   localkeybinds.addBind('I', KEYACTION_COMPARE_IDENTICAL, "Identical compare", KEYSCOPE_SPLIT_LOCAL_LOCAL);
   localkeybinds.addBind('t', KEYACTION_TRANSFER, "Transfer (Upload)", KEYSCOPE_SPLIT_SITE_LOCAL);
+  localkeybinds.addBind('a', KEYACTION_QUEUE, "Queue (Upload)", KEYSCOPE_SPLIT_SITE_LOCAL);
   localkeybinds.addBind('u', KEYACTION_COMPARE_UNIQUE, "Unique compare", KEYSCOPE_SPLIT_SITE_LOCAL);
   localkeybinds.addBind('I', KEYACTION_COMPARE_IDENTICAL, "Identical compare", KEYSCOPE_SPLIT_SITE_LOCAL);
   localkeybinds.addBind(27, KEYACTION_BACK_CANCEL, "Cancel");
@@ -361,21 +365,17 @@ bool BrowseScreen::keyPressed(unsigned int ch) {
   return false;
 }
 
+int BrowseScreen::getCurrentKeyScope() const {
+  if (!split) return KEYSCOPE_ALL;
+  if (left->type() == BrowseScreenType::SITE && right->type() == BrowseScreenType::SITE)
+    return KEYSCOPE_SPLIT_SITE_SITE;
+  if (left->type() != right->type())
+    return KEYSCOPE_SPLIT_SITE_LOCAL;
+  return KEYSCOPE_SPLIT_LOCAL_LOCAL;
+}
+
 bool BrowseScreen::keyPressedNoSubAction(unsigned int ch) {
-  int scope = KEYSCOPE_ALL;
-  if (split) {
-    if (left->type() == BrowseScreenType::SITE && right->type() == BrowseScreenType::SITE) {
-      scope = KEYSCOPE_SPLIT_SITE_SITE;
-    }
-    else if ((left->type() == BrowseScreenType::LOCAL && right->type() == BrowseScreenType::SITE) ||
-        (left->type() == BrowseScreenType::SITE && right->type() == BrowseScreenType::LOCAL))
-    {
-      scope = KEYSCOPE_SPLIT_SITE_LOCAL;
-    }
-    else if (left->type() == BrowseScreenType::LOCAL && right->type() == BrowseScreenType::LOCAL) {
-      scope = KEYSCOPE_SPLIT_LOCAL_LOCAL;
-    }
-  }
+  int scope = getCurrentKeyScope();
   KeyBinds* binds = &keybinds;
   if (active->type() == BrowseScreenType::SITE) {
     binds = &sitekeybinds;
@@ -462,6 +462,92 @@ bool BrowseScreen::keyPressedNoSubAction(unsigned int ch) {
         }
       }
       return true;
+    case KEYACTION_QUEUE:
+      if (split && left->type() != BrowseScreenType::SELECTOR && right->type() != BrowseScreenType::SELECTOR) {
+        std::shared_ptr<BrowseScreenSub> other = active == left ? right : left;
+        if (active->type() == BrowseScreenType::SITE) {
+          std::shared_ptr<FileList> activefl = std::static_pointer_cast<BrowseScreenSite>(active)->fileList();
+          std::list<UIFile *> files = std::static_pointer_cast<BrowseScreenSite>(active)->getUIFileList()->getSelectedFiles();
+          if (activefl != NULL) {
+            if (other->type() == BrowseScreenType::SITE) {
+              std::shared_ptr<BrowseScreenSite> othersite = std::static_pointer_cast<BrowseScreenSite>(other);
+              for (std::list<UIFile *>::const_iterator it = files.begin(); it != files.end(); it++) {
+                UIFile * f = *it;
+                if (!f || (!f->isDirectory() && !f->getSize())) continue;
+                QueuedItem qi;
+                qi.direction = QueuedItem::Direction::FXP;
+                qi.srcSite = std::static_pointer_cast<BrowseScreenSite>(active)->siteName();
+                qi.srcPath = activefl->getPath().toString();
+                qi.fileName = f->getName();
+                qi.isDirectory = f->isDirectory();
+                qi.dstSite = othersite->siteName();
+                qi.dstPath = othersite->fileList()->getPath().toString();
+                if (global->getEngine()->isInQueue(qi)) continue;
+                global->getEngine()->addToQueue(std::make_shared<QueuedItem>(qi));
+              }
+            }
+            else {
+              std::shared_ptr<LocalFileList> otherfl = std::static_pointer_cast<BrowseScreenLocal>(other)->fileList();
+              if (!!otherfl) {
+                for (std::list<UIFile *>::const_iterator it = files.begin(); it != files.end(); it++) {
+                  UIFile * f = *it;
+                  if (!f || (!f->isDirectory() && !f->getSize())) continue;
+                  QueuedItem qi;
+                  qi.direction = QueuedItem::Direction::DOWNLOAD;
+                  qi.srcSite = std::static_pointer_cast<BrowseScreenSite>(active)->siteName();
+                  qi.srcPath = activefl->getPath().toString();
+                  qi.fileName = f->getName();
+                  qi.isDirectory = f->isDirectory();
+                  qi.localDstPath = otherfl->getPath();
+                  if (global->getEngine()->isInQueue(qi)) continue;
+                  global->getEngine()->addToQueue(std::make_shared<QueuedItem>(qi));
+                }
+              }
+            }
+          }
+        }
+        else if (other->type() == BrowseScreenType::SITE) {
+          std::shared_ptr<LocalFileList> activefl = std::static_pointer_cast<BrowseScreenLocal>(active)->fileList();
+          std::shared_ptr<BrowseScreenSite> othersite = std::static_pointer_cast<BrowseScreenSite>(other);
+          std::list<UIFile *> files = std::static_pointer_cast<BrowseScreenLocal>(active)->getUIFileList()->getSelectedFiles();
+          if (!!activefl && othersite->fileList() != NULL) {
+            for (std::list<UIFile *>::const_iterator it = files.begin(); it != files.end(); it++) {
+              UIFile * f = *it;
+              if (!f || (!f->isDirectory() && !f->getSize())) continue;
+              QueuedItem qi;
+              qi.direction = QueuedItem::Direction::UPLOAD;
+              qi.localDstPath = activefl->getPath();
+              qi.fileName = f->getName();
+              qi.isDirectory = f->isDirectory();
+              qi.dstSite = othersite->siteName();
+              qi.dstPath = othersite->fileList()->getPath().toString();
+              if (global->getEngine()->isInQueue(qi)) continue;
+              global->getEngine()->addToQueue(std::make_shared<QueuedItem>(qi));
+            }
+          }
+        }
+        ui->setInfo();
+        ui->redraw();
+      }
+      else if (!split && active->type() == BrowseScreenType::SITE) {
+        std::list<UIFile *> files = std::static_pointer_cast<BrowseScreenSite>(active)->getUIFileList()->getSelectedFiles();
+        for (std::list<UIFile *>::const_iterator it = files.begin(); it != files.end(); it++) {
+          UIFile * f = *it;
+          if (!f || (!f->isDirectory() && !f->getSize())) continue;
+          QueuedItem qi;
+          qi.direction = QueuedItem::Direction::DOWNLOAD;
+          qi.srcSite = std::static_pointer_cast<BrowseScreenSite>(active)->siteName();
+          qi.srcPath = std::static_pointer_cast<BrowseScreenSite>(active)->getUIFileList()->getPath().toString();
+          qi.fileName = f->getName();
+          qi.isDirectory = f->isDirectory();
+          qi.localDstPath = global->getLocalStorage()->getDownloadPath();
+          if (global->getEngine()->isInQueue(qi)) continue;
+          global->getEngine()->addToQueue(std::make_shared<QueuedItem>(qi));
+        }
+        ui->setInfo();
+        ui->redraw();
+      }
+      return true;
     case KEYACTION_COMPARE_UNIQUE:
       toggleCompareListMode(CompareMode::UNIQUE);
       return true;
@@ -491,34 +577,16 @@ bool BrowseScreen::keyPressedNoSubAction(unsigned int ch) {
       }
       return true;
     case KEYACTION_0:
-      jumpSectionHotkey(0);
-      return true;
     case KEYACTION_1:
-      jumpSectionHotkey(1);
-      return true;
     case KEYACTION_2:
-      jumpSectionHotkey(2);
-      return true;
     case KEYACTION_3:
-      jumpSectionHotkey(3);
-      return true;
     case KEYACTION_4:
-      jumpSectionHotkey(4);
-      return true;
     case KEYACTION_5:
-      jumpSectionHotkey(5);
-      return true;
     case KEYACTION_6:
-      jumpSectionHotkey(6);
-      return true;
     case KEYACTION_7:
-      jumpSectionHotkey(7);
-      return true;
     case KEYACTION_8:
-      jumpSectionHotkey(8);
-      return true;
     case KEYACTION_9:
-      jumpSectionHotkey(9);
+      jumpSectionHotkey(action - KEYACTION_0);
       return true;
     case KEYACTION_KEYBINDS:
       ui->goKeyBinds(binds);
@@ -591,7 +659,8 @@ bool BrowseScreen::keyPressedNoSubAction(unsigned int ch) {
 }
 
 std::string BrowseScreen::getLegendText() const {
-  return active->getLegendText(KEYSCOPE_ALL);
+  int scope = getCurrentKeyScope();
+  return active->getLegendText(scope);
   /*std::string extra = "";
   if (split && left->type() != BrowseScreenType::SELECTOR && right->type() != BrowseScreenType::SELECTOR) {
     extra += "Show [u]niques - Show [I]denticals - ";
@@ -619,7 +688,12 @@ std::string BrowseScreen::getInfoLabel() const {
 }
 
 std::string BrowseScreen::getInfoText() const {
-  return active->getInfoText();
+  std::string text = active->getInfoText();
+  unsigned int queuesize = global->getEngine()->getQueueSize();
+  if (queuesize > 0) {
+    text += "  Queue: " + std::to_string(queuesize);
+  }
+  return text;
 }
 
 bool BrowseScreen::isInitialized() const {

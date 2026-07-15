@@ -200,3 +200,13 @@ void TextInputField::clear() {
 void TextInputField::setVisibleLength(unsigned int visiblelen) {
   this->visiblelen = visiblelen;
 }
+
+unsigned int TextInputField::getCursorPosition() const {
+  return cursor;
+}
+
+void TextInputField::setCursorPosition(unsigned int pos) {
+  if (pos <= text.length()) {
+    cursor = pos;
+  }
+}

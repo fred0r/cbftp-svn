@@ -111,6 +111,11 @@ public:
   unsigned int getId() const;
   void abort();
   void clearExisting();
+  void stopAfterRelease();
+  void stopAfterFile();
+  void clearStopFlags();
+  bool isStopping() const;
+  bool isStopAfterFile() const;
   bool hasFailedTransfer(const std::string &) const;
   bool anyListNeedsRefreshing() const;
   std::shared_ptr<SiteTransferJob> & getSrcTransferJob();
@@ -176,6 +181,8 @@ private:
   int filesprogress;
   int filestotal;
   bool almostdone;
+  bool stopafterrelease;
+  bool stopafterfile;
   unsigned int id;
   std::unordered_map<std::string, int> transferattempts;
   int idletime;

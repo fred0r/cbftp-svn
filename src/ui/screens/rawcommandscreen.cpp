@@ -80,8 +80,10 @@ void RawCommandScreen::initialize(unsigned int row, unsigned int col, RawBuffer 
 
 void RawCommandScreen::redraw() {
   vv->clear();
+  unsigned int oldcursor = rawcommandfield.getCursorPosition();
   std::string oldtext = rawcommandfield.getData();
   rawcommandfield = MenuSelectOptionTextField("rawcommand", row-1, 10, "", oldtext, col-15, 65536, false);
+  rawcommandfield.setCursorPosition(oldcursor);
   fixCopyReadPos();
   update();
 }

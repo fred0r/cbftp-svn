@@ -683,7 +683,11 @@ void TransferJob::updateStatus() {
   filesprogress = filescompleted.size();
   int filesexistingorcompleted = util::merge(existingtargets, filescompleted).size();
   int filesfailedordupe = util::merge(filesdupe, filesfailed).size();
-  if (almostdone && !ongoingtransfers && filesexistingorcompleted + filesfailedordupe >= filestotal) {
+  if (!almostdone && !ongoingtransfers && pendingtransfers.empty() &&
+      filestotal > 0 && filesexistingorcompleted + filesfailedordupe >= filestotal) {
+    almostdone = true;
+  }
+  if (almostdone && !ongoingtransfers && filestotal > 0 && filesexistingorcompleted + filesfailedordupe >= filestotal) {
     if (filescompleted.size() < filesfailed.size()) {
       setFailed();
     }
@@ -895,6 +899,43 @@ void TransferJob::clearExisting() {
   skippedtransfers.clear();
 }
 
+void TransferJob::stopAfterRelease() {
+  if (isDone() || stopafterrelease) {
+    return;
+  }
+  stopafterrelease = true;
+  if (filestotal > 0) {
+    almostdone = true;
+  }
+}
+
+void TransferJob::stopAfterFile() {
+  if (isDone() || stopafterfile) {
+    return;
+  }
+  stopafterfile = true;
+  if (filestotal > 0) {
+    almostdone = true;
+  }
+}
+
+bool TransferJob::isStopping() const {
+  return stopafterrelease || stopafterfile;
+}
+
+bool TransferJob::isStopAfterFile() const {
+  return stopafterfile;
+}
+
+void TransferJob::clearStopFlags() {
+  if (isDone()) {
+    return;
+  }
+  stopafterrelease = false;
+  stopafterfile = false;
+  almostdone = false;
+}
+
 unsigned int TransferJob::getId() const {
   return id;
 }
@@ -1078,6 +1119,8 @@ void TransferJob::resetValues() {
   timequeued = global->getTimeReference()->getCurrentLogTimeStamp();
   timequeuedfull = global->getTimeReference()->getCurrentFullTimeStamp();
   almostdone = false;
+  stopafterrelease = false;
+  stopafterfile = false;
   slots = maxPossibleSlots();
   expectedfinalsize = 0;
   sizeprogress = 0;

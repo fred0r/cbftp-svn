@@ -76,6 +76,14 @@ int MenuSelectOptionTextField::cursorPosition() const {
   return textfield.getVisualCursorPosition();
 }
 
+unsigned int MenuSelectOptionTextField::getCursorPosition() const {
+  return textfield.getCursorPosition();
+}
+
+void MenuSelectOptionTextField::setCursorPosition(unsigned int pos) {
+  textfield.setCursorPosition(pos);
+}
+
 std::string MenuSelectOptionTextField::getData() const {
   return textfield.getText();
 }

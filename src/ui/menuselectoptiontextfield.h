@@ -20,6 +20,8 @@ public:
   bool activate() override;
   bool inputChar(int ch) override;
   int cursorPosition() const override;
+  unsigned int getCursorPosition() const;
+  void setCursorPosition(unsigned int pos);
   std::string getData() const;
   void clear();
   void setText(const std::string& text);
