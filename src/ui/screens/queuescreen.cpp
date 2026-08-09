@@ -467,6 +467,10 @@ std::string QueueScreen::getFileStatusLabel(const std::shared_ptr<QueuedItem>& q
   }
   std::shared_ptr<TransferStatus> ts = tj->getFileTransferStatus(qi->fileName);
   if (!ts) {
+    if (tj->getStatus() == TRANSFERJOB_RUNNING) {
+      unsigned int dots = (animtick / 4) % 4;
+      return std::string(dots, '.');
+    }
     return "wait";
   }
   switch (ts->getState()) {
