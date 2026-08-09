@@ -188,20 +188,15 @@ bool QueueScreen::keyPressed(unsigned int ch) {
     case KEYACTION_ENTER:
       if (!sourceitems.empty()) {
         animtick = 2;
-        std::shared_ptr<QueuedItem> rep = nullptr;
         for (auto it = sourceitems.begin(); it != sourceitems.end(); ++it) {
           if (!(*it)->transferJobId) {
-            rep = *it;
-            break;
-          }
-        }
-        if (rep) {
-          JobStartResult result = engine->startQueueBatch(rep);
-          if (result) {
-            ui->addTempLegendTransferJob(result.id);
-          }
-          else if (!result.error.empty()) {
-            ui->goInfo("Failed to start transfer: " + result.error);
+            JobStartResult result = engine->startQueueBatch(*it);
+            if (result) {
+              ui->addTempLegendTransferJob(result.id);
+            }
+            else if (!result.error.empty()) {
+              ui->goInfo("Failed to start transfer: " + result.error);
+            }
           }
         }
         ui->redraw();
