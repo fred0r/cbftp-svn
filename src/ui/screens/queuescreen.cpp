@@ -455,7 +455,7 @@ std::string QueueScreen::getFileStatusLabel(const std::shared_ptr<QueuedItem>& q
   }
   switch (tj->getStatus()) {
     case TRANSFERJOB_QUEUED:
-      return "lgn";
+      return "wait";
     case TRANSFERJOB_FAILED:
       return "fail";
     case TRANSFERJOB_ABORTED:
@@ -467,19 +467,12 @@ std::string QueueScreen::getFileStatusLabel(const std::shared_ptr<QueuedItem>& q
   }
   std::shared_ptr<TransferStatus> ts = tj->getFileTransferStatus(qi->fileName);
   if (!ts) {
-    unsigned int dots = (animtick / 4) % 4;
-    return std::string(dots, '.');
+    return "wait";
   }
   switch (ts->getState()) {
     case TRANSFERSTATUS_STATE_IN_PROGRESS: {
-      std::string prefix = "dn";
-      if (ts->getType() == TRANSFERSTATUS_TYPE_UPLOAD) {
-        prefix = "up";
-      }
-      else if (ts->getType() == TRANSFERSTATUS_TYPE_FXP) {
-        prefix = "fxp";
-      }
-      return prefix + std::to_string(ts->getProgress()) + "%";
+      unsigned int dots = (animtick / 4) % 4;
+      return std::string(dots, '.');
     }
     case TRANSFERSTATUS_STATE_SUCCESSFUL:
     case TRANSFERSTATUS_STATE_DUPE:
