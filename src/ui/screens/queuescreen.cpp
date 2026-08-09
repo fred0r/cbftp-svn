@@ -454,6 +454,8 @@ std::string QueueScreen::getFileStatusLabel(const std::shared_ptr<QueuedItem>& q
     return "wait";
   }
   switch (tj->getStatus()) {
+    case TRANSFERJOB_QUEUED:
+      return "lgn";
     case TRANSFERJOB_FAILED:
       return "fail";
     case TRANSFERJOB_ABORTED:
