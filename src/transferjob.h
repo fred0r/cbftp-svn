@@ -43,6 +43,9 @@ public:
   TransferJob(unsigned int id, const Path& srcpath, const std::string& srcfile, const std::shared_ptr<SiteLogic>& dstsl, const Path& dstpath, const std::string& dstsection, const std::string& dstfile);
   TransferJob(unsigned int id, const std::shared_ptr<SiteLogic>& srcsl, const std::shared_ptr<FileList>& srcfilelist, const std::string& srcfile, const std::shared_ptr<SiteLogic>& dstsl, const std::shared_ptr<FileList>& dstfilelist, const std::string& dstfile);
   TransferJob(unsigned int id, const std::shared_ptr<SiteLogic>& srcsl, const Path& srcpath, const std::string& srcsection, const std::string& srcfile, const std::shared_ptr<SiteLogic>& dstsl, const Path& dstpath, const std::string& dstsection, const std::string& dstfile);
+  TransferJob(unsigned int id, const std::shared_ptr<SiteLogic>& srcsl, const Path& srcpath, const std::string& srcsection, const std::list<std::string>& files, const Path& dstpath);
+  TransferJob(unsigned int id, const Path& srcpath, const std::list<std::string>& files, const std::shared_ptr<SiteLogic>& dstsl, const Path& dstpath, const std::string& dstsection);
+  TransferJob(unsigned int id, const std::shared_ptr<SiteLogic>& srcsl, const Path& srcpath, const std::string& srcsection, const std::list<std::string>& files, const std::shared_ptr<SiteLogic>& dstsl, const Path& dstpath, const std::string& dstsection);
   ~TransferJob();
   void createSiteTransferJobs(const std::shared_ptr<TransferJob>& tj);
   int getType() const;
@@ -69,6 +72,10 @@ public:
   std::unordered_map<std::string, unsigned long long int>::const_iterator existingTargetsEnd() const;
   bool isDone() const;
   bool isDirectory() const;
+  bool isMultiFile() const;
+  bool isMultiFileFile(const std::string& file) const;
+  const std::list<std::string>& getMultiFiles() const;
+  std::shared_ptr<TransferStatus> getFileTransferStatus(const std::string& file) const;
   TransferJobStatus getStatus() const;
   bool tryReserveListTarget(const std::shared_ptr<FileList>& fl, int connid);
   std::list<std::shared_ptr<FileList>> getListTargets(bool source) const;
@@ -126,6 +133,9 @@ private:
   void downloadJob(unsigned int id, const std::shared_ptr<SiteLogic>& srcsl, const std::shared_ptr<FileList>& srcfilelist, const std::string& srcsection, const std::string& srcfile, const Path& dstpath, const std::string& dstfile);
   void uploadJob(unsigned int id, const Path& srcpath, const std::string& srcfile, const std::shared_ptr<SiteLogic>& dstsl, const std::shared_ptr<FileList>& dstfilelist, const std::string& dstsection, const std::string& dstfile);
   void fxpJob(unsigned int id, const std::shared_ptr<SiteLogic>& srcsl, const std::shared_ptr<FileList>& srcfilelist, const std::string& srcsection, const std::string& srcfile, const std::shared_ptr<SiteLogic>& dstsl, const std::shared_ptr<FileList>& dstfilelist, const std::string& dstsection, const std::string& dstfile);
+  void downloadJob(unsigned int id, const std::shared_ptr<SiteLogic>& srcsl, const std::shared_ptr<FileList>& srcfilelist, const std::string& srcsection, const std::list<std::string>& files, const Path& dstpath);
+  void uploadJob(unsigned int id, const Path& srcpath, const std::list<std::string>& files, const std::shared_ptr<SiteLogic>& dstsl, const std::shared_ptr<FileList>& dstfilelist, const std::string& dstsection);
+  void fxpJob(unsigned int id, const std::shared_ptr<SiteLogic>& srcsl, const std::shared_ptr<FileList>& srcfilelist, const std::string& srcsection, const std::list<std::string>& files, const std::shared_ptr<SiteLogic>& dstsl, const std::shared_ptr<FileList>& dstfilelist, const std::string& dstsection);
   void addTransferAttempt(const std::shared_ptr<TransferStatus> &, bool);
   void addSubDirectoryFileLists(std::unordered_map<std::string, std::shared_ptr<FileList>>&, const std::shared_ptr<FileList>& fl, const Path &);
   void addSubDirectoryFileLists(std::unordered_map<std::string, std::shared_ptr<FileList>>&, const std::shared_ptr<FileList>& fl, const Path &, File *);
@@ -151,6 +161,8 @@ private:
   SkipList* dstsectionskiplist;
   std::string srcfile;
   std::string dstfile;
+  bool multifile;
+  std::list<std::string> multifiles;
   std::unordered_map<std::string, std::shared_ptr<FileList>> srcfilelists;
   std::unordered_map<std::string, std::shared_ptr<FileList>> dstfilelists;
   std::unordered_map<std::string, std::shared_ptr<LocalFileList> > localfilelists;

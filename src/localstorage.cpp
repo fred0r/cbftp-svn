@@ -12,6 +12,7 @@
 #include "uibase.h"
 #include "filesystem.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
@@ -413,6 +414,14 @@ std::shared_ptr<LocalFileList> LocalStorage::getLocalFileListPrune(const Path& p
   return std::shared_ptr<LocalFileList>();
 }
 
+std::shared_ptr<LocalFileList> LocalStorage::getLocalFileListPruneMany(const Path& path, const std::list<std::string>& remainingfiles) {
+  std::shared_ptr<LocalFileList> filelist = std::make_shared<LocalFileList>(path);
+  if (updateLocalFileListPruneMany(filelist, remainingfiles)) {
+    return filelist;
+  }
+  return std::shared_ptr<LocalFileList>();
+}
+
 bool LocalStorage::updateLocalFileList(const std::shared_ptr<LocalFileList>& filelist) {
   if (!filelist) {
     return false;
@@ -441,6 +450,10 @@ bool LocalStorage::updateLocalFileList(const std::shared_ptr<LocalFileList>& fil
 }
 
 bool LocalStorage::updateLocalFileListPrune(const std::shared_ptr<LocalFileList>& filelist, const std::string& remainingfile) {
+  return updateLocalFileListPruneMany(filelist, std::list<std::string>(1, remainingfile));
+}
+
+bool LocalStorage::updateLocalFileListPruneMany(const std::shared_ptr<LocalFileList>& filelist, const std::list<std::string>& remainingfiles) {
   if (!filelist) {
     return false;
   }
@@ -451,7 +464,7 @@ bool LocalStorage::updateLocalFileListPrune(const std::shared_ptr<LocalFileList>
     struct dirent * dent;
     while (dir != nullptr && (dent = readdir(dir)) != nullptr) {
       std::string name = dent->d_name;
-      if (name == remainingfile) {
+      if (std::find(remainingfiles.begin(), remainingfiles.end(), name) != remainingfiles.end()) {
         LocalFile file = getLocalFile(path / name);
         filelist->updateFile(file, touch);
         ++files;

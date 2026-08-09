@@ -126,21 +126,30 @@ determined by the context: SITE-SITE queues as FXP, SITE-LOCAL as download,
 LOCAL-SITE as upload.
 
 The queue is accessible from anywhere by pressing Q (shown in the info bar
-as "Queue: N"). In the queue screen you can:
-- Press Enter to view transfer details
-- Press t to start the first queued transfer
-- Press T to start transfers sequentially (auto-chains through queue)
-- Press s to stop the top transfer after the current release
-- Press S to stop the top transfer after the current file
+as "Queue: N"). The queue screen groups queued items by their route: all
+queued files sharing the same source and destination (site, path and section)
+are batched into a single transfer job, so one login is used per source and the
+site's configured upload/download slots are shared across the whole batch.
+
+Only one source is shown at a time; the header shows the current source
+(e.g. "source 1/3 - FXP site1 -> site2"). In the queue screen you can:
+- Press Tab to switch to the next source
+- Press PageUp/PageDown to scroll through the files of the current source
+- Press Enter to view transfer details of the selected file
+- Press t to start the batch of the current source
+- Press T to start the batch of the current source (all remaining items)
+- Press s to stop the current source's transfer after the current release
+- Press S to stop the current source's transfer after the current file
 - Press + to move the selected item up in the queue
 - Press - to move the selected item down in the queue
 - Press Delete to remove an item (with y/n confirmation)
 - Press c to continue stopped transfers
-- Press C to clear the entire queue (with y/n confirmation)
+- Press C to clear the current source from the queue (with y/n confirmation)
 
-Running transfers show a dot animation (FXP. -> FXP.. -> FXP...),
-failed transfers show an x prefix (xFXP). Items stay in the queue
-until their TransferJob reaches DONE status, then are removed.
+The status column shows the phase of each queued file: wait (not started),
+lgn (connecting/logging in), up/dn/fxp with a percentage (transferring),
+done, fail or abor. Items stay in the queue until their TransferJob reaches
+DONE status, then are removed.
 
 The queue is memory-only and will be lost when cbftp exits.
 

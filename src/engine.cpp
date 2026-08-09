@@ -295,12 +295,7 @@ bool Engine::isInQueue(const QueuedItem& item) const {
 }
 
 void Engine::removeFromQueue(unsigned int id) {
-  for (auto it = transferqueue.begin(); it != transferqueue.end(); ++it) {
-    if ((*it)->id == id) {
-      transferqueue.erase(it);
-      return;
-    }
-  }
+  transferqueue.erase(id);
 }
 
 void Engine::clearQueue() {
@@ -320,9 +315,8 @@ std::list<std::shared_ptr<QueuedItem>>::const_iterator Engine::getQueueEnd() con
 }
 
 std::shared_ptr<QueuedItem> Engine::getQueuedItemById(unsigned int id) const {
-  for (auto it = transferqueue.begin(); it != transferqueue.end(); ++it) {
-    if ((*it)->id == id) return *it;
-  }
+  auto it = transferqueue.find(id);
+  if (it != transferqueue.end()) return *it;
   return nullptr;
 }
 
@@ -331,7 +325,7 @@ bool Engine::moveQueueItemUp(unsigned int id) {
     if ((*it)->id == id) {
       if (it == transferqueue.begin()) return false;
       auto prev = std::prev(it);
-      transferqueue.splice(prev, transferqueue, it);
+      transferqueue.getList().splice(prev, transferqueue.getList(), it);
       return true;
     }
   }
@@ -343,7 +337,7 @@ bool Engine::moveQueueItemDown(unsigned int id) {
     if ((*it)->id == id) {
       auto next = std::next(it);
       if (next == transferqueue.end()) return false;
-      transferqueue.splice(std::next(next), transferqueue, it);
+      transferqueue.getList().splice(std::next(next), transferqueue.getList(), it);
       return true;
     }
   }
@@ -412,6 +406,95 @@ JobStartResult Engine::startQueuedItem(const std::shared_ptr<QueuedItem>& item) 
     item->transferJobId = result.id;
   }
   return result;
+}
+
+JobStartResult Engine::startQueueBatch(const std::shared_ptr<QueuedItem>& item) {
+  std::list<std::string> infomessages;
+  if (!item) {
+    return jobStartErrorLogged("No item to start.", infomessages);
+  }
+  std::string routekey = item->getRouteKey();
+  std::list<std::string> files;
+  std::list<std::shared_ptr<QueuedItem>> dirs;
+  for (auto it = transferqueue.begin(); it != transferqueue.end(); ++it) {
+    std::shared_ptr<QueuedItem> qi = *it;
+    if (qi->transferJobId || qi->getRouteKey() != routekey) {
+      continue;
+    }
+    if (qi->isDirectory) {
+      dirs.push_back(qi);
+    }
+    else {
+      files.push_back(qi->fileName);
+    }
+  }
+  if (files.empty() && dirs.empty()) {
+    return jobStartErrorLogged("Nothing to start for this source.", infomessages);
+  }
+  JobStartResult result;
+  if (!files.empty()) {
+    switch (item->direction) {
+      case QueuedItem::Direction::DOWNLOAD:
+        result = newTransferJobDownload(item->srcSite, Path(item->srcPath), item->srcSection, files, item->localDstPath);
+        break;
+      case QueuedItem::Direction::UPLOAD:
+        result = newTransferJobUpload(item->localDstPath, files, item->dstSite, Path(item->dstPath), item->dstSection);
+        break;
+      case QueuedItem::Direction::FXP:
+        result = newTransferJobFXP(item->srcSite, Path(item->srcPath), item->srcSection, files, item->dstSite, Path(item->dstPath), item->dstSection);
+        break;
+    }
+    if (result) {
+      for (auto it = transferqueue.begin(); it != transferqueue.end(); ++it) {
+        std::shared_ptr<QueuedItem> qi = *it;
+        if (!qi->transferJobId && !qi->isDirectory && qi->getRouteKey() == routekey) {
+          qi->transferJobId = result.id;
+        }
+      }
+    }
+  }
+  if (item->isDirectory) {
+    result = startQueuedItem(item);
+  }
+  return result;
+}
+
+JobStartResult Engine::startAllQueuedBatches() {
+  std::list<std::string> infomessages;
+  JobStartResult result;
+  std::unordered_set<std::string> startedroutes;
+  for (auto it = transferqueue.begin(); it != transferqueue.end(); ++it) {
+    std::shared_ptr<QueuedItem> qi = *it;
+    if (qi->transferJobId) {
+      continue;
+    }
+    std::string routekey = qi->getRouteKey();
+    if (startedroutes.find(routekey) != startedroutes.end()) {
+      continue;
+    }
+    startedroutes.insert(routekey);
+    JobStartResult routeresult = startQueueBatch(qi);
+    if (routeresult) {
+      result = routeresult;
+    }
+    else if (routeresult.error.size()) {
+      logAndAppendInfo(infomessages, routeresult.error);
+    }
+  }
+  if (!result && !infomessages.empty()) {
+    return jobStartErrorLogged(infomessages.front(), infomessages);
+  }
+  return result;
+}
+
+unsigned int Engine::countStartedQueueItems() const {
+  unsigned int count = 0;
+  for (auto it = transferqueue.begin(); it != transferqueue.end(); ++it) {
+    if ((*it)->transferJobId) {
+      ++count;
+    }
+  }
+  return count;
 }
 
 JobStartResult Engine::newSpreadJob(int profile, const std::string& release, const std::string& section, const std::list<std::string>& sites, bool reset, const std::list<std::string>& dlonlysites) {
@@ -814,6 +897,89 @@ JobStartResult Engine::newTransferJobFXP(const std::string& srcsite, const Path&
   alltransferjobs.push_back(tj);
   currenttransferjobs.push_back(tj);
   logAndAppendInfo(infomessages, "Starting FXP job: " + srcfile + " - " + srcsite + " -> " + dstsite);
+  slsrc->addTransferJob(tj->getSrcTransferJob());
+  sldst->addTransferJob(tj->getDstTransferJob());
+  checkStartPoke();
+  global->getStatistics()->addTransferJob();
+  rotateTransferJobsHistory();
+  return JobStartResult(id, infomessages);
+}
+
+JobStartResult Engine::newTransferJobDownload(const std::string& srcsite, const Path& srcpath, const std::string& srcsection, const std::list<std::string>& files, const Path& dstpath) {
+  std::list<std::string> infomessages;
+  const std::shared_ptr<SiteLogic> sl = global->getSiteLogicManager()->getSiteLogic(srcsite);
+  if (!sl) {
+    return jobStartErrorLogged("Bad site name: " + srcsite, infomessages);
+  }
+  if (!srcsection.empty() && !sl->getSite()->hasSection(srcsection)) {
+    return jobStartErrorLogged("Bad section name: " + srcsection, infomessages);
+  }
+  if (files.empty()) {
+    return jobStartErrorLogged("File list cannot be empty.", infomessages);
+  }
+  unsigned int id = nextid++;
+  std::shared_ptr<TransferJob> tj = std::make_shared<TransferJob>(id, sl, srcpath, srcsection, files, dstpath);
+  tj->createSiteTransferJobs(tj);
+  alltransferjobs.push_back(tj);
+  currenttransferjobs.push_back(tj);
+  logAndAppendInfo(infomessages, "Starting download job: " + std::to_string(files.size()) + " files from " + srcsite);
+  sl->addTransferJob(tj->getSrcTransferJob());
+  checkStartPoke();
+  global->getStatistics()->addTransferJob();
+  rotateTransferJobsHistory();
+  return JobStartResult(id, infomessages);
+}
+
+JobStartResult Engine::newTransferJobUpload(const Path& srcpath, const std::list<std::string>& files, const std::string& dstsite, const Path& dstpath, const std::string& dstsection) {
+  std::list<std::string> infomessages;
+  const std::shared_ptr<SiteLogic> sl = global->getSiteLogicManager()->getSiteLogic(dstsite);
+  if (!sl) {
+    return jobStartErrorLogged("Bad site name: " + dstsite, infomessages);
+  }
+  if (!dstsection.empty() && !sl->getSite()->hasSection(dstsection)) {
+    return jobStartErrorLogged("Bad section name: " + dstsection, infomessages);
+  }
+  if (files.empty()) {
+    return jobStartErrorLogged("File list cannot be empty.", infomessages);
+  }
+  unsigned int id = nextid++;
+  std::shared_ptr<TransferJob> tj = std::make_shared<TransferJob>(id, srcpath, files, sl, dstpath, dstsection);
+  tj->createSiteTransferJobs(tj);
+  alltransferjobs.push_back(tj);
+  currenttransferjobs.push_back(tj);
+  logAndAppendInfo(infomessages, "Starting upload job: " + std::to_string(files.size()) + " files to " + dstsite);
+  sl->addTransferJob(tj->getDstTransferJob());
+  checkStartPoke();
+  global->getStatistics()->addTransferJob();
+  rotateTransferJobsHistory();
+  return JobStartResult(id, infomessages);
+}
+
+JobStartResult Engine::newTransferJobFXP(const std::string& srcsite, const Path& srcpath, const std::string& srcsection, const std::list<std::string>& files, const std::string& dstsite, const Path& dstpath, const std::string& dstsection) {
+  std::list<std::string> infomessages;
+  const std::shared_ptr<SiteLogic> slsrc = global->getSiteLogicManager()->getSiteLogic(srcsite);
+  const std::shared_ptr<SiteLogic> sldst = global->getSiteLogicManager()->getSiteLogic(dstsite);
+  if (!slsrc) {
+    return jobStartErrorLogged("Bad site name: " + srcsite, infomessages);
+  }
+  if (!sldst) {
+    return jobStartErrorLogged("Bad site name: " + dstsite, infomessages);
+  }
+  if (!srcsection.empty() && !slsrc->getSite()->hasSection(srcsection)) {
+    return jobStartErrorLogged("Bad section name: " + srcsection, infomessages);
+  }
+  if (!dstsection.empty() && !sldst->getSite()->hasSection(dstsection)) {
+    return jobStartErrorLogged("Bad section name: " + dstsection, infomessages);
+  }
+  if (files.empty()) {
+    return jobStartErrorLogged("File list cannot be empty.", infomessages);
+  }
+  unsigned int id = nextid++;
+  std::shared_ptr<TransferJob> tj = std::make_shared<TransferJob>(id, slsrc, srcpath, srcsection, files, sldst, dstpath, dstsection);
+  tj->createSiteTransferJobs(tj);
+  alltransferjobs.push_back(tj);
+  currenttransferjobs.push_back(tj);
+  logAndAppendInfo(infomessages, "Starting FXP job: " + std::to_string(files.size()) + " files - " + srcsite + " -> " + dstsite);
   slsrc->addTransferJob(tj->getSrcTransferJob());
   sldst->addTransferJob(tj->getDstTransferJob());
   checkStartPoke();
@@ -1555,7 +1721,7 @@ void Engine::refreshPendingTransferList(const std::shared_ptr<TransferJob>& tj) 
         for (std::list<File *>::iterator srcit = srclist->begin(); srcit != srclist->end(); srcit++) {
           File * f = *srcit;
           const std::string & filename = f->getName();
-          bool onefilejob = it2->first == "" && !f->isDirectory() && filename == tj->getSrcFileName();
+          bool onefilejob = it2->first == "" && !f->isDirectory() && (tj->isMultiFile() ? tj->isMultiFileFile(filename) : filename == tj->getSrcFileName());
           if ((it2->first != "" || onefilejob) &&
               !f->isDirectory() && f->getSize() > 0)
           {
@@ -1597,7 +1763,7 @@ void Engine::refreshPendingTransferList(const std::shared_ptr<TransferJob>& tj) 
           continue;
         }
         for (std::unordered_map<std::string, LocalFile>::const_iterator lfit = lit->second->begin(); lfit != lit->second->end(); lfit++) {
-          bool onefilejob = lit->first == "" && !lfit->second.isDirectory() && lfit->first == tj->getSrcFileName();
+          bool onefilejob = lit->first == "" && !lfit->second.isDirectory() && (tj->isMultiFile() ? tj->isMultiFileFile(lfit->first) : lfit->first == tj->getSrcFileName());
           if ((lit->first != "" || onefilejob) &&
               !lfit->second.isDirectory() && lfit->second.getSize() > 0)
           {
@@ -1649,7 +1815,7 @@ void Engine::refreshPendingTransferList(const std::shared_ptr<TransferJob>& tj) 
         for (std::list<File *>::iterator srcit = srclist->begin(); srcit != srclist->end(); srcit++) {
           File * f = *srcit;
           const std::string & filename = f->getName();
-          bool onefilejob = it2->first == "" && !f->isDirectory() && filename == tj->getSrcFileName();
+          bool onefilejob = it2->first == "" && !f->isDirectory() && (tj->isMultiFile() ? tj->isMultiFileFile(filename) : filename == tj->getSrcFileName());
           if ((it2->first != "" || onefilejob) &&
               !f->isDirectory() && f->getSize() > 0)
           {

@@ -44,6 +44,7 @@ struct QueuedItem {
   bool isDirectory;
   unsigned int id;
   unsigned int transferJobId = 0;
+  unsigned int getId() const { return id; }
 
   std::string getDirectionLabel() const {
     switch (direction) {
@@ -62,6 +63,21 @@ struct QueuedItem {
   std::string getDisplayDest() const {
     if (direction == Direction::DOWNLOAD) return localDstPath.toString();
     return dstSite + ":" + dstPath;
+  }
+
+  std::string getRouteKey() const {
+    std::string s = getDirectionLabel();
+    s += "|" + srcSite + "|" + srcPath + "|" + srcSection;
+    s += "|" + dstSite + "|" + dstPath + "|" + dstSection;
+    s += "|" + localDstPath.toString();
+    return s;
+  }
+
+  std::string getDisplayKey() const {
+    std::string s = getDirectionLabel();
+    s += "|" + srcSite + "|" + dstSite;
+    s += "|" + localDstPath.toString();
+    return s;
   }
 };
 
@@ -95,12 +111,15 @@ public:
   JobStartResult newTransferJobDownload(const std::string& srcsite, const std::shared_ptr<FileList>& srcfilelist, const std::string& file, const Path& dstpath);
   JobStartResult newTransferJobDownload(const std::string& srcsite, const std::shared_ptr<FileList>& srcfilelist, const std::string& srcfile, const Path& dstpath, const std::string& dstfile);
   JobStartResult newTransferJobDownload(const std::string& srcsite, const Path& srcpath, const std::string& srcsection, const std::string& srcfile, const Path& dstpath, const std::string& dstfile);
+  JobStartResult newTransferJobDownload(const std::string& srcsite, const Path& srcpath, const std::string& srcsection, const std::list<std::string>& files, const Path& dstpath);
   JobStartResult newTransferJobUpload(const Path& srcpath, const std::string& file, const std::string& dstsite, const std::shared_ptr<FileList>& dstfilelist);
   JobStartResult newTransferJobUpload(const Path& srcpath, const std::string& srcfile, const std::string& dstsite, const std::shared_ptr<FileList>& dstfilelist, const std::string& dstfile);
   JobStartResult newTransferJobUpload(const Path& srcpath, const std::string& srcfile, const std::string& dstsite, const Path& dstpath, const std::string& dstsection, const std::string& dstfile);
+  JobStartResult newTransferJobUpload(const Path& srcpath, const std::list<std::string>& files, const std::string& dstsite, const Path& dstpath, const std::string& dstsection);
   JobStartResult newTransferJobFXP(const std::string& srcsite, const std::shared_ptr<FileList>& srcfilelist, const std::string& dstsite, const std::shared_ptr<FileList>& dstfilelist, const std::string& file);
   JobStartResult newTransferJobFXP(const std::string& srcsite, const std::shared_ptr<FileList>& srcfilelist, const std::string& srcfile, const std::string& dstsite, const std::shared_ptr<FileList>& dstfilelist, const std::string& dstfile);
   JobStartResult newTransferJobFXP(const std::string& srcsite, const Path& srcpath, const std::string& srcsection, const std::string& srcfile, const std::string& dstsite, const Path& dstpath, const std::string& dstsection, const std::string& dstfile);
+  JobStartResult newTransferJobFXP(const std::string& srcsite, const Path& srcpath, const std::string& srcsection, const std::list<std::string>& files, const std::string& dstsite, const Path& dstpath, const std::string& dstsection);
   void removeSiteFromRace(const std::shared_ptr<Race> &, const std::string &);
   void removeSiteFromAllRunningSpreadJobs(const std::string& site);
   void removeSiteFromRaceDeleteFiles(const std::shared_ptr<Race>& race, const std::string& site, bool allfiles, bool deleteoncomplete);
@@ -156,6 +175,9 @@ public:
   unsigned int addToQueue(const std::shared_ptr<QueuedItem>& item);
   bool isInQueue(const QueuedItem& item) const;
   JobStartResult startQueuedItem(const std::shared_ptr<QueuedItem>& item);
+  JobStartResult startQueueBatch(const std::shared_ptr<QueuedItem>& item);
+  JobStartResult startAllQueuedBatches();
+  unsigned int countStartedQueueItems() const;
   void removeFromQueue(unsigned int id);
   void clearQueue();
   size_t getQueueSize() const;
@@ -207,7 +229,7 @@ public:
   void clearSkipListCaches();
   void rotateSpreadJobsHistory();
   void rotateTransferJobsHistory();
-  std::list<std::shared_ptr<QueuedItem>> transferqueue;
+  JobList<std::shared_ptr<QueuedItem>> transferqueue;
   JobList<std::shared_ptr<Race>> allraces;
   JobList<std::shared_ptr<Race>> currentraces;
   JobList<std::shared_ptr<Race>> finishedraces;

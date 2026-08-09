@@ -81,6 +81,8 @@ public:
     index.clear();
     items.clear();
   }
+  std::list<T>& getList() { return items; }
+  const std::list<T>& getList() const { return items; }
   size_t size() const {
     return index.size();
   }

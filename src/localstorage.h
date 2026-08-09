@@ -62,8 +62,10 @@ public:
   void setDownloadPath(const Path &);
   static std::shared_ptr<LocalFileList> getLocalFileList(const Path& path);
   static std::shared_ptr<LocalFileList> getLocalFileListPrune(const Path& path, const std::string& remainingfile);
+  static std::shared_ptr<LocalFileList> getLocalFileListPruneMany(const Path& path, const std::list<std::string>& remainingfiles);
   static bool updateLocalFileList(const std::shared_ptr<LocalFileList>& filelist);
   static bool updateLocalFileListPrune(const std::shared_ptr<LocalFileList>& filelist, const std::string& remainingfile);
+  static bool updateLocalFileListPruneMany(const std::shared_ptr<LocalFileList>& filelist, const std::list<std::string>& remainingfiles);
   int requestLocalFileList(const Path & path);
   bool requestReady(int requestid) const;
   std::shared_ptr<LocalFileList> getLocalFileList(int requestid);
