@@ -13,6 +13,8 @@ namespace Core {
 /* Most OpenSSL handling resides in this class. */
 class SSLManager {
 public:
+  enum class KeyAlgorithm { EC_prime256v1 = 0, SLH_DSA_SHA2_128s = 1, ML_DSA_44 = 2 };
+
   /* List all the loaded certificate/private keys as binary data in DER
    * format.
    */
@@ -43,6 +45,13 @@ public:
   static std::string version();
   static std::string sslErrorToString(int error);
   static bool isAbruptDisconnectError(unsigned long e);
+
+  static KeyAlgorithm getKeyAlgorithm();
+  static void setKeyAlgorithm(KeyAlgorithm algo);
+  static bool isKeyAlgorithmAvailable(KeyAlgorithm algo);
+
+private:
+  static KeyAlgorithm keyalgorithm;
 };
 
 } // namespace Core

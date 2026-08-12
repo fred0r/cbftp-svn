@@ -20,6 +20,9 @@
 #include <openssl/sslerr.h>
 #endif
 #include <openssl/evp.h>
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+#include <openssl/provider.h>
+#endif
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 
@@ -89,7 +92,7 @@ pthread_t sslThreadIdCallback() {
 }
 #endif
 
-EVP_PKEY* createPrivateKey() {
+EVP_PKEY* createPrivateKeyEC() {
   assert(g_initialized);
   EVP_PKEY* pkey = nullptr;
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
@@ -145,6 +148,72 @@ EVP_PKEY* createPrivateKey() {
   EVP_PKEY_CTX_free(ctx);
 #endif
   return pkey;
+}
+
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+EVP_PKEY* createPrivateKeySLHDSA() {
+  assert(g_initialized);
+  EVP_PKEY* pkey = nullptr;
+  EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_SLH_DSA_SHA2_128S, nullptr);
+  if (!ctx) {
+    getLogger()->log("SSLManager", "EVP_PKEY_CTX_new_id for SLH-DSA failed: " + SSLErrors(), LogLevel::ERROR);
+    return nullptr;
+  }
+  if (EVP_PKEY_keygen_init(ctx) < 1) {
+    getLogger()->log("SSLManager", "EVP_PKEY_keygen_init for SLH-DSA failed: " + SSLErrors(), LogLevel::ERROR);
+    EVP_PKEY_CTX_free(ctx);
+    return nullptr;
+  }
+  if (EVP_PKEY_keygen(ctx, &pkey) < 1) {
+    getLogger()->log("SSLManager", "EVP_PKEY_keygen for SLH-DSA failed: " + SSLErrors(), LogLevel::ERROR);
+    EVP_PKEY_CTX_free(ctx);
+    return nullptr;
+  }
+  EVP_PKEY_CTX_free(ctx);
+  return pkey;
+}
+
+EVP_PKEY* createPrivateKeyMLDSA() {
+  assert(g_initialized);
+  EVP_PKEY* pkey = nullptr;
+  EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_ML_DSA_44, nullptr);
+  if (!ctx) {
+    getLogger()->log("SSLManager", "EVP_PKEY_CTX_new_id for ML-DSA failed: " + SSLErrors(), LogLevel::ERROR);
+    return nullptr;
+  }
+  if (EVP_PKEY_keygen_init(ctx) < 1) {
+    getLogger()->log("SSLManager", "EVP_PKEY_keygen_init for ML-DSA failed: " + SSLErrors(), LogLevel::ERROR);
+    EVP_PKEY_CTX_free(ctx);
+    return nullptr;
+  }
+  if (EVP_PKEY_keygen(ctx, &pkey) < 1) {
+    getLogger()->log("SSLManager", "EVP_PKEY_keygen for ML-DSA failed: " + SSLErrors(), LogLevel::ERROR);
+    EVP_PKEY_CTX_free(ctx);
+    return nullptr;
+  }
+  EVP_PKEY_CTX_free(ctx);
+  return pkey;
+}
+#endif
+
+EVP_PKEY* createPrivateKey() {
+  if (SSLManager::getKeyAlgorithm() == SSLManager::KeyAlgorithm::SLH_DSA_SHA2_128s) {
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+    EVP_PKEY* key = createPrivateKeySLHDSA();
+    if (key) return key;
+    getLogger()->log("SSLManager", "SLH-DSA key generation failed, falling back to EC", LogLevel::WARNING);
+    SSLManager::setKeyAlgorithm(SSLManager::KeyAlgorithm::EC_prime256v1);
+#endif
+  }
+  else if (SSLManager::getKeyAlgorithm() == SSLManager::KeyAlgorithm::ML_DSA_44) {
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+    EVP_PKEY* key = createPrivateKeyMLDSA();
+    if (key) return key;
+    getLogger()->log("SSLManager", "ML-DSA key generation failed, falling back to EC", LogLevel::WARNING);
+    SSLManager::setKeyAlgorithm(SSLManager::KeyAlgorithm::EC_prime256v1);
+#endif
+  }
+  return createPrivateKeyEC();
 }
 
 X509* createSelfSignedCertificate(EVP_PKEY* pkey) {
@@ -265,6 +334,13 @@ std::list<std::string> getHostNamesFromCertificate(X509* cert) {
 
 } // namespace
 
+SSLManager::KeyAlgorithm SSLManager::keyalgorithm =
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+    KeyAlgorithm::SLH_DSA_SHA2_128s;
+#else
+    KeyAlgorithm::EC_prime256v1;
+#endif
+
 int earlyCallback(SSL* ssl, int* alarm, void* arg) {
   const char* name = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
   std::map<std::string, SSLContextInfo&>::const_iterator it;
@@ -339,6 +415,25 @@ SSL_CTX* createServerContext() {
   SSL_CTX_set_ecdh_auto(ctx, 1);
 #endif
   return ctx;
+}
+
+SSLManager::KeyAlgorithm SSLManager::getKeyAlgorithm() {
+  return keyalgorithm;
+}
+
+void SSLManager::setKeyAlgorithm(KeyAlgorithm algo) {
+  keyalgorithm = algo;
+}
+
+bool SSLManager::isKeyAlgorithmAvailable(KeyAlgorithm algo) {
+  if (algo == KeyAlgorithm::SLH_DSA_SHA2_128s) {
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+    return true;
+#else
+    return false;
+#endif
+  }
+  return true;
 }
 
 void SSLManager::init() {

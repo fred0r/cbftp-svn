@@ -1,6 +1,7 @@
 #include "globaloptionsscreen.h"
 
 #include "../../core/iomanager.h"
+#include "../../core/sslmanager.h"
 #include "../../globalcontext.h"
 #include "../../remotecommandhandler.h"
 #include "../../sitemanager.h"
@@ -255,6 +256,12 @@ void GlobalOptionsScreen::initialize(unsigned int row, unsigned int col) {
                      std::to_string(sm->getDefaultTLSExpiryWarn()), false, 4);
   mso.addCheckBox(y++, x, "tlsallowexpired", "Default TLS certificate: allow expired:",
                    sm->getDefaultTLSAllowExpired());
+  y++;
+  std::shared_ptr<MenuSelectOptionTextArrow> keyalgo = mso.addTextArrow(y++, x, "keyalgorithm", "TLS key algorithm:");
+  keyalgo->addOption("EC prime256v1", static_cast<int>(Core::SSLManager::KeyAlgorithm::EC_prime256v1));
+  keyalgo->addOption("SLH-DSA-SHA2-128s", static_cast<int>(Core::SSLManager::KeyAlgorithm::SLH_DSA_SHA2_128s));
+  keyalgo->addOption("ML-DSA-44", static_cast<int>(Core::SSLManager::KeyAlgorithm::ML_DSA_44));
+  keyalgo->setOption(static_cast<int>(Core::SSLManager::getKeyAlgorithm()));
   mso.addStringField(y++, x, "defidletime", "Default site max idle time (s):", std::to_string(sm->getDefaultMaxIdleTime()), false);
   y++;
   mso.addStringField(y++, x, "dlpath", "Local download path:", ls->getDownloadPath().toString(), false, 53, 128);
@@ -486,6 +493,10 @@ bool GlobalOptionsScreen::keyPressed(unsigned int ch) {
         }
         else if (identifier == "tlsallowexpired") {
           sm->setDefaultTLSAllowExpired(std::static_pointer_cast<MenuSelectOptionCheckBox>(msoe)->getData());
+        }
+        else if (identifier == "keyalgorithm") {
+          Core::SSLManager::setKeyAlgorithm(
+            static_cast<Core::SSLManager::KeyAlgorithm>(std::static_pointer_cast<MenuSelectOptionTextArrow>(msoe)->getData()));
         }
         else if (identifier == "defidletime") {
           sm->setDefaultMaxIdleTime(std::stoi(std::static_pointer_cast<MenuSelectOptionTextField>(msoe)->getData()));

@@ -167,6 +167,12 @@ void SettingsLoaderSaver::loadSettings() {
       Crypto::base64Decode(Core::BinaryData(privatekey.begin(), privatekey.end()), privkeydata);
       Core::SSLManager::addCertKeyPair(privkeydata, certdata);
     }
+    else if (!setting.compare("keyalgorithm")) {
+      Core::SSLManager::KeyAlgorithm algo = static_cast<Core::SSLManager::KeyAlgorithm>(std::stoi(value));
+      if (Core::SSLManager::isKeyAlgorithmAvailable(algo)) {
+        Core::SSLManager::setKeyAlgorithm(algo);
+      }
+    }
   }
 
   dfh->getDataFor("RemoteCommandHandler", &lines);
@@ -892,6 +898,7 @@ void SettingsLoaderSaver::saveSettings() {
     Crypto::base64Encode(pair.second, cert);
     dfh->addOutputLine("SSLManager", "certkeypair=" + std::string(cert.begin(), cert.end()) + "$" + std::string(key.begin(), key.end()));
   }
+  dfh->addOutputLine("SSLManager", "keyalgorithm=" + std::to_string(static_cast<int>(Core::SSLManager::getKeyAlgorithm())));
 
   if (global->getRemoteCommandHandler()->isEnabled()) {
     dfh->addOutputLine("RemoteCommandHandler", "udpenable=true");
