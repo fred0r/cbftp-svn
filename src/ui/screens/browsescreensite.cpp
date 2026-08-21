@@ -13,6 +13,7 @@
 #include "../../eventlog.h"
 #include "../../filelist.h"
 #include "../../engine.h"
+#include "../../transferjob.h"
 #include "../../localstorage.h"
 #include "../../util.h"
 #include "../../timereference.h"
@@ -36,6 +37,8 @@
 #include "browsescreen.h"
 #include "rawdatascreen.h"
 
+#define TRANSFER_REFRESH_INTERVAL 20
+
 BrowseScreenSite::BrowseScreenSite(Ui* ui, BrowseScreen* parent,
     KeyBinds& keybinds, const std::string& sitestr, const Path& path) :
     BrowseScreenSub(keybinds), ui(ui), parent(parent), row(0), col(0),
@@ -48,7 +51,7 @@ BrowseScreenSite::BrowseScreenSite(Ui* ui, BrowseScreen* parent,
     withinraceskiplistreach(false), focus(true), temphighlightline(false),
     softselecting(false), lastinfo(LastInfo::NONE),
     confirmaction(ConfirmAction::NONE), refreshfilelistafter(false),
-    nameonly(false)
+    nameonly(false), monitoringtransferjobs(false), transferrefreshticker(0)
 {
   vv = &ui->getVirtualView();
   sitelogic->getAggregatedRawBuffer()->bookmark();
@@ -68,7 +71,7 @@ BrowseScreenSite::BrowseScreenSite(Ui* ui, BrowseScreen* parent,
     withinraceskiplistreach(false), focus(true), temphighlightline(false),
     softselecting(false), lastinfo(LastInfo::NONE),
     confirmaction(ConfirmAction::NONE), refreshfilelistafter(false),
-    nameonly(false)
+    nameonly(false), monitoringtransferjobs(false), transferrefreshticker(0)
 {
   vv = &ui->getVirtualView();
   sitelogic->getAggregatedRawBuffer()->bookmark();
@@ -85,6 +88,7 @@ BrowseScreenSite::BrowseScreenSite(Ui* ui, BrowseScreen* parent,
 
 BrowseScreenSite::~BrowseScreenSite() {
   disableGotoMode();
+  global->getTickPoke()->stopPoke(this, 2);
   if (!list.isInitialized()) {
     sitelogic->getAggregatedRawBuffer()->setUiWatching(false);
   }
@@ -467,6 +471,7 @@ void BrowseScreenSite::loadFileListFromRequest() {
       break;
     }
   }
+  updateTransferJobMonitoring();
   //delete filelist;
 }
 
@@ -1210,12 +1215,83 @@ Path BrowseScreenSite::getLastJumpPath() const {
   return lastjumppath;
 }
 
-void BrowseScreenSite::tick(int) {
+void BrowseScreenSite::tick(int message) {
+  if (message == 2) {
+    updateTransferJobMonitoring();
+  }
   if (gotomode && !gotomodefirst) {
     if (gotomodeticker++ >= 20) {
       disableGotoMode();
     }
   }
+}
+
+void BrowseScreenSite::updateTransferJobMonitoring() {
+  if (!list.isInitialized()) {
+    return;
+  }
+  std::set<unsigned int> activejobs;
+  for (auto it = global->getEngine()->getCurrentTransferJobsBegin(); it != global->getEngine()->getCurrentTransferJobsEnd(); it++) {
+    const std::shared_ptr<TransferJob>& tj = *it;
+    if (!tj->isDone() && transferJobTargetsPath(tj)) {
+      activejobs.insert(tj->getId());
+    }
+  }
+  bool completed = false;
+  for (unsigned int id : watchedtransferjobids) {
+    if (activejobs.find(id) == activejobs.end()) {
+      completed = true;
+      break;
+    }
+  }
+  watchedtransferjobids = activejobs;
+  if (!activejobs.empty()) {
+    if (transferrefreshticker++ >= TRANSFER_REFRESH_INTERVAL) {
+      if (!hasPendingFileListRequest()) {
+        refreshFileList();
+      }
+      transferrefreshticker = 0;
+    }
+  }
+  else {
+    transferrefreshticker = 0;
+  }
+  if (completed && !hasPendingFileListRequest()) {
+    refreshFileList();
+  }
+  if (!activejobs.empty() && !monitoringtransferjobs) {
+    global->getTickPoke()->startPoke(this, "BrowseScreenSite", 250, 2);
+    monitoringtransferjobs = true;
+  }
+  else if (activejobs.empty() && monitoringtransferjobs) {
+    global->getTickPoke()->stopPoke(this, 2);
+    monitoringtransferjobs = false;
+  }
+}
+
+bool BrowseScreenSite::transferJobTargetsPath(const std::shared_ptr<TransferJob>& tj) const {
+  if (tj->getType() == TRANSFERJOB_DOWNLOAD) {
+    return false;
+  }
+  const std::shared_ptr<SiteLogic>& dsl = tj->getDst();
+  if (!dsl || dsl->getSite()->getName() != site->getName()) {
+    return false;
+  }
+  Path target = tj->getDstPath();
+  if (tj->isDirectory()) {
+    target = target / tj->getDstFileName();
+  }
+  const Path& curpath = list.getPath();
+  return curpath == target || curpath.contains(target) || target.contains(curpath);
+}
+
+bool BrowseScreenSite::hasPendingFileListRequest() const {
+  for (const BrowseScreenRequest& request : requests) {
+    if (request.type == BrowseScreenRequestType::FILELIST && request.path == list.getPath()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void BrowseScreenSite::disableGotoMode() {

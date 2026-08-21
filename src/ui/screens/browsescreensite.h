@@ -1,6 +1,7 @@
 #pragma once
 
 #include <list>
+#include <set>
 #include <utility>
 #include <string>
 
@@ -22,6 +23,7 @@ class VirtualView;
 class UIFile;
 class BrowseScreenAction;
 class KeyBinds;
+class TransferJob;
 
 enum class ConfirmAction {
   NONE,
@@ -62,6 +64,9 @@ private:
   void clearSoftSelects();
   bool handleReadyRequests();
   void loadFileListFromRequest();
+  void updateTransferJobMonitoring();
+  bool transferJobTargetsPath(const std::shared_ptr<TransferJob>&) const;
+  bool hasPendingFileListRequest() const;
   void viewCursored();
   bool keyDown();
   Ui* ui;
@@ -105,4 +110,7 @@ private:
   std::string lastjumpsection;
   Path lastjumppath;
   bool nameonly;
+  bool monitoringtransferjobs;
+  std::set<unsigned int> watchedtransferjobids;
+  int transferrefreshticker;
 };
