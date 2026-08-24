@@ -79,6 +79,10 @@ struct QueuedItem {
     s += "|" + localDstPath.toString();
     return s;
   }
+
+  std::string getSitePairKey() const {
+    return getDirectionLabel() + "|" + srcSite + "|" + dstSite;
+  }
 };
 
 struct JobStartResult {
