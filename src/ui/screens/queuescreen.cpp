@@ -50,6 +50,7 @@ void QueueScreen::initialize(unsigned int row, unsigned int col) {
   delete_pending_id = 0;
   clear_pending = false;
   startall_pending = false;
+  startall_attempted.clear();
   sourceitems.clear();
   global->getTickPoke()->stopPoke(this, 0);
   engine = global->getEngine();
@@ -64,6 +65,7 @@ void QueueScreen::redraw() {
   table.reset();
   if (engine->getQueueBegin() == engine->getQueueEnd()) {
     hascontents = false;
+    sourceitems.clear();
     printSlider(vv, row, col - 1, 1, currentviewspan);
     return;
   }
@@ -169,12 +171,25 @@ bool QueueScreen::keyPressed(unsigned int ch) {
         animtick = 2;
         std::shared_ptr<QueuedItem> qi = getSelectedItem();
         if (qi) {
-          JobStartResult result = engine->startQueueBatch(qi);
-          if (result) {
-            ui->addTempLegendTransferJob(result.id);
+          bool startable = true;
+          if (qi->transferJobId) {
+            std::shared_ptr<TransferJob> tj = engine->getTransferJob(qi->transferJobId);
+            if (tj && !tj->isDone()) {
+              ui->goInfo("Item already started.");
+              startable = false;
+            }
+            else {
+              qi->transferJobId = 0;
+            }
           }
-          else if (!result.error.empty()) {
-            ui->goInfo("Failed to start transfer: " + result.error);
+          if (startable) {
+            JobStartResult result = engine->startQueueBatch(qi);
+            if (result) {
+              ui->addTempLegendTransferJob(result.id);
+            }
+            else if (!result.error.empty()) {
+              ui->goInfo("Failed to start transfer: " + result.error);
+            }
           }
         }
         ui->redraw();
@@ -184,6 +199,7 @@ bool QueueScreen::keyPressed(unsigned int ch) {
       if (hascontents) {
         animtick = 2;
         startall_pending = true;
+        startall_attempted.clear();
         startAllPending();
         ui->redraw();
       }
@@ -316,7 +332,26 @@ void QueueScreen::command(const std::string& command, const std::string& arg) {
       ui->redraw();
     }
     else if (delete_pending_id) {
-      engine->removeFromQueue(delete_pending_id);
+      std::shared_ptr<QueuedItem> qi = engine->getQueuedItemById(delete_pending_id);
+      unsigned int jobid = qi ? qi->transferJobId : 0;
+      if (jobid) {
+        std::shared_ptr<TransferJob> tj = engine->getTransferJob(jobid);
+        if (tj && !tj->isDone()) {
+          engine->abortTransferJob(tj);
+        }
+        std::list<unsigned int> toremove;
+        for (auto it = engine->getQueueBegin(); it != engine->getQueueEnd(); ++it) {
+          if ((*it)->transferJobId == jobid) {
+            toremove.push_back((*it)->id);
+          }
+        }
+        for (unsigned int id : toremove) {
+          engine->removeFromQueue(id);
+        }
+      }
+      else {
+        engine->removeFromQueue(delete_pending_id);
+      }
       delete_pending_id = 0;
       if (ypos > sourceitems.size()) {
         ypos = sourceitems.size();
@@ -421,8 +456,14 @@ std::string QueueScreen::getFileStatusLabel(const std::shared_ptr<QueuedItem>& q
 }
 
 std::shared_ptr<QueuedItem> QueueScreen::getSelectedItem() const {
-  std::shared_ptr<MenuSelectOptionTextButton> msotb =
-      std::static_pointer_cast<MenuSelectOptionTextButton>(table.getElement(table.getSelectionPointer()));
+  std::shared_ptr<MenuSelectOptionElement> msoe = table.getElement(table.getSelectionPointer());
+  if (!msoe) {
+    return nullptr;
+  }
+  std::shared_ptr<MenuSelectOptionTextButton> msotb = std::dynamic_pointer_cast<MenuSelectOptionTextButton>(msoe);
+  if (!msotb) {
+    return nullptr;
+  }
   return engine->getQueuedItemById(msotb->getId());
 }
 
@@ -447,10 +488,14 @@ void QueueScreen::startAllPending() {
     if (qi->transferJobId) {
       continue;
     }
+    if (startall_attempted.find(qi->id) != startall_attempted.end()) {
+      continue;
+    }
     std::string pairkey = qi->getSitePairKey();
     if (runningpairs.find(pairkey) != runningpairs.end()) {
       continue;
     }
+    startall_attempted.insert(qi->id);
     JobStartResult result = engine->startQueueBatch(qi);
     if (result) {
       startedany = true;

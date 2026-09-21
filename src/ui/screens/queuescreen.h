@@ -3,6 +3,7 @@
 #include <list>
 #include <memory>
 #include <string>
+#include <unordered_set>
 
 #include "../../core/eventreceiver.h"
 
@@ -31,11 +32,11 @@ private:
   void startAllPending();
   std::string getFileStatusLabel(const std::shared_ptr<QueuedItem>& qi) const;
   std::shared_ptr<QueuedItem> getSelectedItem() const;
-  std::shared_ptr<QueuedItem> getStartedItem() const;
   unsigned int animtick;
   unsigned int delete_pending_id;
   bool clear_pending;
   bool startall_pending;
+  std::unordered_set<unsigned int> startall_attempted;
   MenuSelectOption table;
   Engine * engine;
   bool hascontents;
