@@ -3,7 +3,7 @@
 #include <list>
 #include <memory>
 #include <string>
-#include <vector>
+#include <unordered_set>
 
 #include "../../core/eventreceiver.h"
 
@@ -29,21 +29,18 @@ private:
   bool keyDown() override;
   void tick(int) override;
   void checkCompleted();
-  void rebuildRoutes();
-  std::string getSourceDescription() const;
+  void startAllPending();
   std::string getFileStatusLabel(const std::shared_ptr<QueuedItem>& qi) const;
   std::shared_ptr<QueuedItem> getSelectedItem() const;
-  std::shared_ptr<QueuedItem> getStartedItem() const;
   unsigned int animtick;
   unsigned int delete_pending_id;
   bool clear_pending;
-  unsigned int restore_id;
+  bool startall_pending = false;
+  std::unordered_set<unsigned int> startall_attempted;
   MenuSelectOption table;
   Engine * engine;
   bool hascontents;
   unsigned int currentviewspan;
   unsigned int ypos;
-  std::vector<std::string> routes;
-  unsigned int currentsource;
   std::list<std::shared_ptr<QueuedItem>> sourceitems;
 };

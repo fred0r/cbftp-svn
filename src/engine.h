@@ -32,7 +32,7 @@ class TransferStatus;
 
 struct QueuedItem {
   enum class Direction { DOWNLOAD, UPLOAD, FXP };
-  Direction direction;
+  Direction direction = Direction::DOWNLOAD;
   std::string srcSite;
   std::string srcPath;
   std::string srcSection;
@@ -41,8 +41,8 @@ struct QueuedItem {
   std::string dstSection;
   Path localDstPath;
   std::string fileName;
-  bool isDirectory;
-  unsigned int id;
+  bool isDirectory = false;
+  unsigned int id = 0;
   unsigned int transferJobId = 0;
   unsigned int getId() const { return id; }
 
@@ -55,16 +55,6 @@ struct QueuedItem {
     return "";
   }
 
-  std::string getDisplaySource() const {
-    if (direction == Direction::UPLOAD) return "[local]";
-    return srcSite;
-  }
-
-  std::string getDisplayDest() const {
-    if (direction == Direction::DOWNLOAD) return localDstPath.toString();
-    return dstSite + ":" + dstPath;
-  }
-
   std::string getRouteKey() const {
     std::string s = getDirectionLabel();
     s += "|" + srcSite + "|" + srcPath + "|" + srcSection;
@@ -73,11 +63,8 @@ struct QueuedItem {
     return s;
   }
 
-  std::string getDisplayKey() const {
-    std::string s = getDirectionLabel();
-    s += "|" + srcSite + "|" + dstSite;
-    s += "|" + localDstPath.toString();
-    return s;
+  std::string getSitePairKey() const {
+    return getDirectionLabel() + "|" + srcSite + "|" + dstSite;
   }
 };
 
@@ -176,7 +163,6 @@ public:
   bool isInQueue(const QueuedItem& item) const;
   JobStartResult startQueuedItem(const std::shared_ptr<QueuedItem>& item);
   JobStartResult startQueueBatch(const std::shared_ptr<QueuedItem>& item);
-  JobStartResult startAllQueuedBatches();
   unsigned int countStartedQueueItems() const;
   void removeFromQueue(unsigned int id);
   void clearQueue();
@@ -186,9 +172,6 @@ public:
   std::shared_ptr<QueuedItem> getQueuedItemById(unsigned int id) const;
   bool moveQueueItemUp(unsigned int id);
   bool moveQueueItemDown(unsigned int id);
-  void stopTransferJobAfterRelease(unsigned int queueId);
-  void stopTransferJobAfterFile(unsigned int queueId);
-  void stopTopOfQueue(bool stopAfterRelease);
   int getMaxSpreadJobsHistory() const;
   int getMaxTransferJobsHistory() const;
   void setMaxSpreadJobsHistory(int jobs);

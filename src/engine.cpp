@@ -344,51 +344,6 @@ bool Engine::moveQueueItemDown(unsigned int id) {
   return false;
 }
 
-void Engine::stopTransferJobAfterRelease(unsigned int queueId) {
-  std::shared_ptr<QueuedItem> qi = getQueuedItemById(queueId);
-  if (qi && qi->transferJobId) {
-    std::shared_ptr<TransferJob> tj = getTransferJob(qi->transferJobId);
-    if (tj && !tj->isDone()) {
-      tj->stopAfterRelease();
-    }
-  }
-}
-
-void Engine::stopTransferJobAfterFile(unsigned int queueId) {
-  std::shared_ptr<QueuedItem> qi = getQueuedItemById(queueId);
-  if (qi && qi->transferJobId) {
-    std::shared_ptr<TransferJob> tj = getTransferJob(qi->transferJobId);
-    if (tj && !tj->isDone()) {
-      tj->stopAfterFile();
-    }
-  }
-}
-
-void Engine::stopTopOfQueue(bool stopAfterRelease) {
-  if (transferqueue.empty()) return;
-  std::shared_ptr<QueuedItem> topItem = transferqueue.front();
-  if (topItem->transferJobId) {
-    std::shared_ptr<TransferJob> tj = getTransferJob(topItem->transferJobId);
-    if (tj && !tj->isDone()) {
-      if (stopAfterRelease) {
-        tj->stopAfterRelease();
-      } else {
-        tj->stopAfterFile();
-      }
-    }
-  }
-  for (auto it = transferqueue.begin(); it != transferqueue.end(); ++it) {
-    std::shared_ptr<QueuedItem> qi = *it;
-    if (qi->id == topItem->id) continue;
-    if (qi->transferJobId) {
-      std::shared_ptr<TransferJob> tj = getTransferJob(qi->transferJobId);
-      if (tj && !tj->isDone()) {
-        tj->abort();
-      }
-    }
-  }
-}
-
 JobStartResult Engine::startQueuedItem(const std::shared_ptr<QueuedItem>& item) {
   JobStartResult result;
   switch (item->direction) {
@@ -454,35 +409,10 @@ JobStartResult Engine::startQueueBatch(const std::shared_ptr<QueuedItem>& item) 
     }
   }
   if (item->isDirectory) {
-    result = startQueuedItem(item);
-  }
-  return result;
-}
-
-JobStartResult Engine::startAllQueuedBatches() {
-  std::list<std::string> infomessages;
-  JobStartResult result;
-  std::unordered_set<std::string> startedroutes;
-  for (auto it = transferqueue.begin(); it != transferqueue.end(); ++it) {
-    std::shared_ptr<QueuedItem> qi = *it;
-    if (qi->transferJobId) {
-      continue;
+    JobStartResult dirresult = startQueuedItem(item);
+    if (!result) {
+      result = dirresult;
     }
-    std::string routekey = qi->getRouteKey();
-    if (startedroutes.find(routekey) != startedroutes.end()) {
-      continue;
-    }
-    startedroutes.insert(routekey);
-    JobStartResult routeresult = startQueueBatch(qi);
-    if (routeresult) {
-      result = routeresult;
-    }
-    else if (routeresult.error.size()) {
-      logAndAppendInfo(infomessages, routeresult.error);
-    }
-  }
-  if (!result && !infomessages.empty()) {
-    return jobStartErrorLogged(infomessages.front(), infomessages);
   }
   return result;
 }

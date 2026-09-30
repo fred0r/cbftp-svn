@@ -15,7 +15,6 @@
 
 namespace {
 enum KeyAction {
-  KEYACTION_NEXT_SOURCE,
   KEYACTION_MOVE_DOWN,
   KEYACTION_MOVE_UP,
   KEYACTION_STOP_RELEASE,
@@ -26,7 +25,6 @@ enum KeyAction {
 
 QueueScreen::QueueScreen(Ui* ui) : UIWindow(ui, "QueueScreen"), table(*vv) {
   keybinds.addBind(10, KEYACTION_INFO, "Details");
-  keybinds.addBind('\t', KEYACTION_NEXT_SOURCE, "Next source");
   keybinds.addBind('t', KEYACTION_ENTER, "Start batch");
   keybinds.addBind('T', KEYACTION_START_ALL, "Start all batches");
   keybinds.addBind(KEY_DC, KEYACTION_DELETE, "Remove");
@@ -36,7 +34,7 @@ QueueScreen::QueueScreen(Ui* ui) : UIWindow(ui, "QueueScreen"), table(*vv) {
   keybinds.addBind('-', KEYACTION_MOVE_DOWN, "Move down");
   keybinds.addBind('s', KEYACTION_STOP_RELEASE, "Stop after release");
   keybinds.addBind('S', KEYACTION_STOP_FILE, "Stop after file");
-  keybinds.addBind('C', KEYACTION_CLEAR, "Clear source");
+  keybinds.addBind('C', KEYACTION_CLEAR, "Clear queue");
 }
 
 QueueScreen::~QueueScreen() {
@@ -51,9 +49,7 @@ void QueueScreen::initialize(unsigned int row, unsigned int col) {
   animtick = 0;
   delete_pending_id = 0;
   clear_pending = false;
-  restore_id = 0;
-  currentsource = 0;
-  routes.clear();
+  startall_attempted.clear();
   sourceitems.clear();
   global->getTickPoke()->stopPoke(this, 0);
   engine = global->getEngine();
@@ -65,25 +61,17 @@ void QueueScreen::initialize(unsigned int row, unsigned int col) {
 
 void QueueScreen::redraw() {
   vv->clear();
-  rebuildRoutes();
   table.reset();
-  if (routes.empty()) {
+  if (engine->getQueueBegin() == engine->getQueueEnd()) {
     hascontents = false;
+    sourceitems.clear();
     printSlider(vv, row, col - 1, 1, currentviewspan);
     return;
   }
-  if (currentsource >= routes.size()) {
-    currentsource = routes.size() - 1;
-  }
   sourceitems.clear();
-  const std::string& routekey = routes[currentsource];
   for (auto it = engine->getQueueBegin(); it != engine->getQueueEnd(); ++it) {
-    std::shared_ptr<QueuedItem> qi = *it;
-    if (qi->getDisplayKey() == routekey) {
-      sourceitems.push_back(qi);
-    }
+    sourceitems.push_back(*it);
   }
-  vv->putStr(0, 1, getSourceDescription(), false);
   unsigned int y = 1;
   unsigned int totallistsize = sourceitems.size() + 1;
   while (ypos > 1 && ypos >= totallistsize) {
@@ -150,14 +138,6 @@ bool QueueScreen::keyPressed(unsigned int ch) {
     case KEYACTION_BACK_CANCEL:
       ui->returnToLast();
       return true;
-    case KEYACTION_NEXT_SOURCE:
-      if (routes.size() > 1) {
-        currentsource = (currentsource + 1) % routes.size();
-        ypos = 1;
-        currentviewspan = 0;
-        ui->redraw();
-      }
-      return true;
     case KEYACTION_INFO:
       if (hascontents) {
         std::shared_ptr<QueuedItem> qi = getSelectedItem();
@@ -186,11 +166,23 @@ bool QueueScreen::keyPressed(unsigned int ch) {
       }
       return true;
     case KEYACTION_ENTER:
-      if (!sourceitems.empty()) {
+      if (hascontents) {
         animtick = 2;
-        for (auto it = sourceitems.begin(); it != sourceitems.end(); ++it) {
-          if (!(*it)->transferJobId) {
-            JobStartResult result = engine->startQueueBatch(*it);
+        std::shared_ptr<QueuedItem> qi = getSelectedItem();
+        if (qi) {
+          bool startable = true;
+          if (qi->transferJobId) {
+            std::shared_ptr<TransferJob> tj = engine->getTransferJob(qi->transferJobId);
+            if (tj && !tj->isDone()) {
+              ui->goInfo("Item already started.");
+              startable = false;
+            }
+            else {
+              qi->transferJobId = 0;
+            }
+          }
+          if (startable) {
+            JobStartResult result = engine->startQueueBatch(qi);
             if (result) {
               ui->addTempLegendTransferJob(result.id);
             }
@@ -203,15 +195,11 @@ bool QueueScreen::keyPressed(unsigned int ch) {
       }
       return true;
     case KEYACTION_START_ALL:
-      if (!sourceitems.empty()) {
+      if (hascontents) {
         animtick = 2;
-        JobStartResult result = engine->startAllQueuedBatches();
-        if (result) {
-          ui->addTempLegendTransferJob(result.id);
-        }
-        else if (!result.error.empty()) {
-          ui->goInfo("Failed to start transfer: " + result.error);
-        }
+        startall_pending = true;
+        startall_attempted.clear();
+        startAllPending();
         ui->redraw();
       }
       return true;
@@ -225,9 +213,9 @@ bool QueueScreen::keyPressed(unsigned int ch) {
       }
       return true;
     case KEYACTION_CLEAR:
-      if (!sourceitems.empty()) {
+      if (hascontents) {
         clear_pending = true;
-        ui->goConfirmation("Clear active source from queue?");
+        ui->goConfirmation("Clear entire queue?");
       }
       return true;
     case KEYACTION_MOVE_UP:
@@ -250,7 +238,7 @@ bool QueueScreen::keyPressed(unsigned int ch) {
       return true;
     case KEYACTION_STOP_RELEASE:
       if (hascontents) {
-        std::shared_ptr<QueuedItem> qi = getStartedItem();
+        std::shared_ptr<QueuedItem> qi = getSelectedItem();
         if (qi && qi->transferJobId) {
           std::shared_ptr<TransferJob> tj = engine->getTransferJob(qi->transferJobId);
           if (tj && !tj->isDone()) {
@@ -262,7 +250,7 @@ bool QueueScreen::keyPressed(unsigned int ch) {
       return true;
     case KEYACTION_STOP_FILE:
       if (hascontents) {
-        std::shared_ptr<QueuedItem> qi = getStartedItem();
+        std::shared_ptr<QueuedItem> qi = getSelectedItem();
         if (qi && qi->transferJobId) {
           std::shared_ptr<TransferJob> tj = engine->getTransferJob(qi->transferJobId);
           if (tj && !tj->isDone()) {
@@ -315,7 +303,7 @@ void QueueScreen::command(const std::string& command, const std::string& arg) {
     if (clear_pending) {
       clear_pending = false;
       std::list<unsigned int> abortjobs;
-      for (auto it = sourceitems.begin(); it != sourceitems.end(); ++it) {
+      for (auto it = engine->getQueueBegin(); it != engine->getQueueEnd(); ++it) {
         std::shared_ptr<QueuedItem> qi = *it;
         if (qi->transferJobId) {
           bool found = false;
@@ -329,7 +317,6 @@ void QueueScreen::command(const std::string& command, const std::string& arg) {
             abortjobs.push_back(qi->transferJobId);
           }
         }
-        engine->removeFromQueue(qi->id);
       }
       for (unsigned int jobid : abortjobs) {
         std::shared_ptr<TransferJob> tj = engine->getTransferJob(jobid);
@@ -337,12 +324,33 @@ void QueueScreen::command(const std::string& command, const std::string& arg) {
           engine->abortTransferJob(tj);
         }
       }
+      engine->clearQueue();
+      startall_pending = false;
       ypos = 1;
       currentviewspan = 0;
       ui->redraw();
     }
     else if (delete_pending_id) {
-      engine->removeFromQueue(delete_pending_id);
+      std::shared_ptr<QueuedItem> qi = engine->getQueuedItemById(delete_pending_id);
+      unsigned int jobid = qi ? qi->transferJobId : 0;
+      if (jobid) {
+        std::shared_ptr<TransferJob> tj = engine->getTransferJob(jobid);
+        if (tj && !tj->isDone()) {
+          engine->abortTransferJob(tj);
+        }
+        std::list<unsigned int> toremove;
+        for (auto it = engine->getQueueBegin(); it != engine->getQueueEnd(); ++it) {
+          if ((*it)->transferJobId == jobid) {
+            toremove.push_back((*it)->id);
+          }
+        }
+        for (unsigned int id : toremove) {
+          engine->removeFromQueue(id);
+        }
+      }
+      else {
+        engine->removeFromQueue(delete_pending_id);
+      }
       delete_pending_id = 0;
       if (ypos > sourceitems.size()) {
         ypos = sourceitems.size();
@@ -366,10 +374,14 @@ std::string QueueScreen::getInfoText() const {
 
 void QueueScreen::tick(int) {
   animtick++;
-  if (engine->countStartedQueueItems() > 0) {
+  bool hasstarted = engine->countStartedQueueItems() > 0;
+  if (hasstarted || startall_pending) {
     ui->redraw();
   }
   checkCompleted();
+  if (startall_pending) {
+    startAllPending();
+  }
 }
 
 void QueueScreen::checkCompleted() {
@@ -395,54 +407,6 @@ void QueueScreen::checkCompleted() {
 
 std::string QueueScreen::getLegendText() const {
   return keybinds.getLegendSummary();
-}
-
-void QueueScreen::rebuildRoutes() {
-  std::vector<std::string> newroutes;
-  for (auto it = engine->getQueueBegin(); it != engine->getQueueEnd(); ++it) {
-    std::string routekey = (*it)->getDisplayKey();
-    bool found = false;
-    for (const std::string& existing : newroutes) {
-      if (existing == routekey) {
-        found = true;
-        break;
-      }
-    }
-    if (!found) {
-      newroutes.push_back(routekey);
-    }
-  }
-  routes = newroutes;
-}
-
-std::string QueueScreen::getSourceDescription() const {
-  if (routes.empty() || currentsource >= routes.size()) {
-    return "";
-  }
-  std::shared_ptr<QueuedItem> rep = nullptr;
-  for (auto it = sourceitems.begin(); it != sourceitems.end(); ++it) {
-    if ((*it)->getDisplayKey() == routes[currentsource]) {
-      rep = *it;
-      break;
-    }
-  }
-  std::string desc = "source " + std::to_string(currentsource + 1) + "/" + std::to_string(routes.size());
-  if (rep) {
-    desc += "  -  " + rep->getDirectionLabel();
-    if (rep->direction == QueuedItem::Direction::UPLOAD) {
-      desc += " " + rep->localDstPath.toString() + " -> " + rep->dstSite;
-    }
-    else {
-      desc += " " + rep->srcSite;
-      if (rep->direction == QueuedItem::Direction::DOWNLOAD) {
-        desc += " -> " + rep->localDstPath.toString();
-      }
-      else {
-        desc += " -> " + rep->dstSite;
-      }
-    }
-  }
-  return desc;
 }
 
 std::string QueueScreen::getFileStatusLabel(const std::shared_ptr<QueuedItem>& qi) const {
@@ -491,16 +455,60 @@ std::string QueueScreen::getFileStatusLabel(const std::shared_ptr<QueuedItem>& q
 }
 
 std::shared_ptr<QueuedItem> QueueScreen::getSelectedItem() const {
-  std::shared_ptr<MenuSelectOptionTextButton> msotb =
-      std::static_pointer_cast<MenuSelectOptionTextButton>(table.getElement(table.getSelectionPointer()));
+  std::shared_ptr<MenuSelectOptionElement> msoe = table.getElement(table.getSelectionPointer());
+  if (!msoe) {
+    return nullptr;
+  }
+  std::shared_ptr<MenuSelectOptionTextButton> msotb = std::dynamic_pointer_cast<MenuSelectOptionTextButton>(msoe);
+  if (!msotb) {
+    return nullptr;
+  }
   return engine->getQueuedItemById(msotb->getId());
 }
 
-std::shared_ptr<QueuedItem> QueueScreen::getStartedItem() const {
-  for (auto it = sourceitems.begin(); it != sourceitems.end(); ++it) {
-    if ((*it)->transferJobId) {
-      return *it;
+void QueueScreen::startAllPending() {
+  if (engine->getQueueBegin() == engine->getQueueEnd()) {
+    startall_pending = false;
+    return;
+  }
+  std::unordered_set<std::string> runningpairs;
+  for (auto it = engine->getQueueBegin(); it != engine->getQueueEnd(); ++it) {
+    std::shared_ptr<QueuedItem> qi = *it;
+    if (qi->transferJobId) {
+      std::shared_ptr<TransferJob> tj = engine->getTransferJob(qi->transferJobId);
+      if (tj && !tj->isDone()) {
+        runningpairs.insert(qi->getSitePairKey());
+      }
     }
   }
-  return nullptr;
+  bool startedany = false;
+  for (auto it = engine->getQueueBegin(); it != engine->getQueueEnd(); ++it) {
+    std::shared_ptr<QueuedItem> qi = *it;
+    if (qi->transferJobId) {
+      continue;
+    }
+    if (startall_attempted.find(qi->id) != startall_attempted.end()) {
+      continue;
+    }
+    std::string pairkey = qi->getSitePairKey();
+    if (runningpairs.find(pairkey) != runningpairs.end()) {
+      continue;
+    }
+    startall_attempted.insert(qi->id);
+    JobStartResult result = engine->startQueueBatch(qi);
+    if (result) {
+      startedany = true;
+      runningpairs.insert(pairkey);
+      ui->addTempLegendTransferJob(result.id);
+    }
+    else if (!result.error.empty()) {
+      ui->goInfo("Failed to start transfer: " + result.error);
+    }
+  }
+  if (startedany) {
+    ui->redraw();
+  }
+  if (runningpairs.empty()) {
+    startall_pending = false;
+  }
 }
