@@ -1,5 +1,6 @@
 #include "engine.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdlib>
 #include <fstream>
@@ -436,31 +437,59 @@ bool Engine::queueBatchCanStart(const std::shared_ptr<QueuedItem>& item) const {
   if (!item) {
     return false;
   }
+  auto check = [this](const std::string& name, bool source) -> bool {
+    std::shared_ptr<SiteLogic> sl = global->getSiteLogicManager()->getSiteLogic(name);
+    if (!sl) {
+      return false;
+    }
+    const std::shared_ptr<Site>& site = sl->getSite();
+    unsigned int logins = site->getMaxLogins();
+    unsigned int budget = source
+        ? std::min({logins, site->getMaxDown(), site->getMaxDownTransferJob()})
+        : std::min(logins, site->getMaxUp());
+    if (budget == 0 || logins == 0) {
+      return false;
+    }
+    if (countActiveQueueBatches(name, source, !source) >= budget) {
+      return false;
+    }
+    if (countActiveQueueBatches(name, true, true) >= logins) {
+      return false;
+    }
+    return true;
+  };
   switch (item->direction) {
-    case QueuedItem::Direction::DOWNLOAD: {
-      std::shared_ptr<SiteLogic> sl = global->getSiteLogicManager()->getSiteLogic(item->srcSite);
-      if (!sl) {
-        return false;
-      }
-      return sl->downloadSlotsAvailable(TransferOriginType::TRANSFERJOB) > 0;
-    }
-    case QueuedItem::Direction::UPLOAD: {
-      std::shared_ptr<SiteLogic> sl = global->getSiteLogicManager()->getSiteLogic(item->dstSite);
-      if (!sl) {
-        return false;
-      }
-      return sl->uploadSlotAvailable();
-    }
-    case QueuedItem::Direction::FXP: {
-      std::shared_ptr<SiteLogic> sls = global->getSiteLogicManager()->getSiteLogic(item->srcSite);
-      std::shared_ptr<SiteLogic> sld = global->getSiteLogicManager()->getSiteLogic(item->dstSite);
-      if (!sls || !sld) {
-        return false;
-      }
-      return sls->downloadSlotsAvailable(TransferOriginType::TRANSFERJOB) > 0 && sld->uploadSlotAvailable();
-    }
+    case QueuedItem::Direction::DOWNLOAD:
+      return check(item->srcSite, true);
+    case QueuedItem::Direction::UPLOAD:
+      return check(item->dstSite, false);
+    case QueuedItem::Direction::FXP:
+      return check(item->srcSite, true) && check(item->dstSite, false);
   }
   return false;
+}
+
+unsigned int Engine::countActiveQueueBatches(const std::string& site, bool source, bool dest) const {
+  std::unordered_set<unsigned int> jobs;
+  for (auto it = transferqueue.begin(); it != transferqueue.end(); ++it) {
+    std::shared_ptr<QueuedItem> qi = *it;
+    if (!qi->transferJobId) {
+      continue;
+    }
+    bool match =
+        (source && (qi->direction == QueuedItem::Direction::DOWNLOAD ||
+                    qi->direction == QueuedItem::Direction::FXP) && qi->srcSite == site) ||
+        (dest && (qi->direction == QueuedItem::Direction::UPLOAD ||
+                  qi->direction == QueuedItem::Direction::FXP) && qi->dstSite == site);
+    if (!match) {
+      continue;
+    }
+    std::shared_ptr<TransferJob> tj = getTransferJob(qi->transferJobId);
+    if (tj && !tj->isDone()) {
+      jobs.insert(qi->transferJobId);
+    }
+  }
+  return static_cast<unsigned int>(jobs.size());
 }
 
 void Engine::resetQueueBatchJobIds(const std::shared_ptr<QueuedItem>& item) {

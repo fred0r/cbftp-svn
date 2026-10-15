@@ -183,6 +183,7 @@ public:
   int getMaxSpreadJobTimeSeconds() const;
   void setMaxSpreadJobTimeSeconds(int seconds);
  private:
+  unsigned int countActiveQueueBatches(const std::string& site, bool source, bool dest) const;
   JobStartResult newSpreadJob(int profile, const std::string& release, const std::string& section, const std::list<std::string>& sites, bool reset, const std::list<std::string>& dlonlysites);
   void estimateRaceSizes();
   void estimateRaceSize(const std::shared_ptr<Race>&, bool forceupdate = false);

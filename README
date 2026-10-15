@@ -139,9 +139,10 @@ In the queue screen you can:
 - Press T to start the whole queue; items sharing the same source and
   destination (site, path and section) are batched into a single transfer job,
   and starting is limited by each site's SITE OPTIONS slot configuration
-  (login slots, upload/download slots, download slots on transfer jobs, and
-  leave one slot free). A batch for a site that currently has no free slot
-  waits until capacity becomes available while the queue screen is open.
+  (login slots, upload/download slots, and download slots on transfer jobs).
+  A batch for a site that already has as many running batches as its slot
+  configuration allows waits until capacity becomes available while the queue
+  screen is open.
   Failed or aborted items are retried automatically up to two times (three
   attempts in total)
 - Press s to stop the selected transfer after the current release
