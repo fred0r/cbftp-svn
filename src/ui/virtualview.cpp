@@ -229,6 +229,9 @@ void VirtualView::resize(unsigned int row, unsigned int col) {
   if (virtualchars.empty()) {
     virtualResize(row, col);
   }
+  else if (virtualrows < row || virtualcols < col) {
+    virtualResize(virtualrows > row ? virtualrows : row, virtualcols > col ? virtualcols : col);
+  }
   unsigned int actualrealrows = getActualRealRows();
   unsigned int actualrealcols = getActualRealCols();
   if (currentviewrow > 0 && currentviewrow + actualrealrows > maxrenderedrow + 1) {
@@ -599,7 +602,7 @@ bool VirtualView::isClear(unsigned int row, unsigned int col, unsigned int len) 
     return true;
   }
   for (unsigned int i = col; i < col + len; ++i) {
-    if (col >= virtualcols) {
+    if (i >= virtualcols) {
       return true;
     }
     const VirtualViewElement& vve = virtualchars.at(row).at(i);

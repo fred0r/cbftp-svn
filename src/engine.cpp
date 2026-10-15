@@ -420,11 +420,80 @@ JobStartResult Engine::startQueueBatch(const std::shared_ptr<QueuedItem>& item) 
 unsigned int Engine::countStartedQueueItems() const {
   unsigned int count = 0;
   for (auto it = transferqueue.begin(); it != transferqueue.end(); ++it) {
-    if ((*it)->transferJobId) {
+    std::shared_ptr<QueuedItem> qi = *it;
+    if (!qi->transferJobId) {
+      continue;
+    }
+    std::shared_ptr<TransferJob> tj = getTransferJob(qi->transferJobId);
+    if (tj && !tj->isDone()) {
       ++count;
     }
   }
   return count;
+}
+
+bool Engine::queueBatchCanStart(const std::shared_ptr<QueuedItem>& item) const {
+  if (!item) {
+    return false;
+  }
+  switch (item->direction) {
+    case QueuedItem::Direction::DOWNLOAD: {
+      std::shared_ptr<SiteLogic> sl = global->getSiteLogicManager()->getSiteLogic(item->srcSite);
+      if (!sl) {
+        return false;
+      }
+      return sl->downloadSlotsAvailable(TransferOriginType::TRANSFERJOB) > 0;
+    }
+    case QueuedItem::Direction::UPLOAD: {
+      std::shared_ptr<SiteLogic> sl = global->getSiteLogicManager()->getSiteLogic(item->dstSite);
+      if (!sl) {
+        return false;
+      }
+      return sl->uploadSlotAvailable();
+    }
+    case QueuedItem::Direction::FXP: {
+      std::shared_ptr<SiteLogic> sls = global->getSiteLogicManager()->getSiteLogic(item->srcSite);
+      std::shared_ptr<SiteLogic> sld = global->getSiteLogicManager()->getSiteLogic(item->dstSite);
+      if (!sls || !sld) {
+        return false;
+      }
+      return sls->downloadSlotsAvailable(TransferOriginType::TRANSFERJOB) > 0 && sld->uploadSlotAvailable();
+    }
+  }
+  return false;
+}
+
+void Engine::resetQueueBatchJobIds(const std::shared_ptr<QueuedItem>& item) {
+  if (!item) {
+    return;
+  }
+  std::string routekey = item->getRouteKey();
+  for (auto it = transferqueue.begin(); it != transferqueue.end(); ++it) {
+    std::shared_ptr<QueuedItem> qi = *it;
+    if (qi->getRouteKey() != routekey) {
+      continue;
+    }
+    if (qi->transferJobId) {
+      std::shared_ptr<TransferJob> tj = getTransferJob(qi->transferJobId);
+      if (tj && !tj->isDone()) {
+        continue;
+      }
+    }
+    qi->transferJobId = 0;
+  }
+}
+
+void Engine::incrementQueueBatchRetries(const std::shared_ptr<QueuedItem>& item) {
+  if (!item) {
+    return;
+  }
+  std::string routekey = item->getRouteKey();
+  for (auto it = transferqueue.begin(); it != transferqueue.end(); ++it) {
+    std::shared_ptr<QueuedItem> qi = *it;
+    if (qi->getRouteKey() == routekey) {
+      ++qi->retries;
+    }
+  }
 }
 
 JobStartResult Engine::newSpreadJob(int profile, const std::string& release, const std::string& section, const std::list<std::string>& sites, bool reset, const std::list<std::string>& dlonlysites) {

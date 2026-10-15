@@ -20,12 +20,14 @@ DataBlockPool::~DataBlockPool()
 }
 
 char* DataBlockPool::getBlock() {
-  char* block;
   std::lock_guard<std::mutex> lock(blocklock);
   if (availableblocks.empty()) {
     allocateNewBlocks();
   }
-  block = availableblocks.back();
+  if (availableblocks.empty()) {
+    return nullptr;
+  }
+  char* block = availableblocks.back();
   availableblocks.pop_back();
   return block;
 }
@@ -42,6 +44,9 @@ void DataBlockPool::returnBlock(char* block) {
 void DataBlockPool::allocateNewBlocks() {
   for (int i = 0; i < 10; i++) {
     char* block = (char*) malloc(BLOCKSIZE);
+    if (!block) {
+      continue;
+    }
     blocks.push_back(block);
     availableblocks.push_back(block);
     totalblocks++;

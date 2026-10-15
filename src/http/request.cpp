@@ -10,36 +10,31 @@ Request::Request() : Request("", "", 0) {
 Request::Request(const std::string& method, const std::string& path, int minorversion)
     : Message("HTTP/1." + std::to_string(minorversion)), method(method), pathwithqueryparams(path)
 {
-  std::string decodedPath = util::urlDecode(path);
-  size_t queryParamSeparator = decodedPath.find("?");
+  size_t queryParamSeparator = path.find("?");
   if (queryParamSeparator != std::string::npos) {
-    this->path = decodedPath.substr(0, queryParamSeparator);
-    parseQueryParams(decodedPath.substr(queryParamSeparator + 1));
+    this->path = util::urlDecode(path.substr(0, queryParamSeparator));
+    parseQueryParams(path.substr(queryParamSeparator + 1));
   }
   else {
-    this->path = path;
+    this->path = util::urlDecode(path);
   }
 }
 
 void Request::parseQueryParams(const std::string& queryparams) {
   size_t pos = 0;
-  while (true) {
-    size_t valueseparator = queryparams.find("=", pos);
+  while (pos <= queryparams.size()) {
+    size_t paramseparator = queryparams.find("&", pos);
+    std::string pair = paramseparator == std::string::npos ?
+        queryparams.substr(pos) : queryparams.substr(pos, paramseparator - pos);
+    size_t valueseparator = pair.find("=");
     if (valueseparator != std::string::npos) {
-      std::string name = queryparams.substr(pos, valueseparator - pos);
-      size_t paramseparator = queryparams.find("&", valueseparator);
-      if (paramseparator != std::string::npos) {
-        this->queryparams[name] = queryparams.substr(valueseparator + 1, paramseparator - valueseparator - 1);
-        pos = paramseparator + 1;
-      }
-      else {
-        this->queryparams[name] = queryparams.substr(valueseparator + 1);
-        break;
-      }
+      std::string name = util::urlDecode(pair.substr(0, valueseparator));
+      this->queryparams[name] = util::urlDecode(pair.substr(valueseparator + 1));
     }
-    else {
+    if (paramseparator == std::string::npos) {
       break;
     }
+    pos = paramseparator + 1;
   }
 }
 

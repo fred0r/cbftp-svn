@@ -152,6 +152,17 @@ bool Path::isRelative() const {
   return !absolute;
 }
 
+bool Path::isSafeFilename(const std::string & name) {
+  if (name.empty() || name == "." || name == "..") {
+    return false;
+  }
+  if (name.find('/') != std::string::npos || name.find('\\') != std::string::npos ||
+      name.find('\0') != std::string::npos) {
+    return false;
+  }
+  return true;
+}
+
 Path Path::operator/(const std::string & rhs) const {
   return Path(*this, Path(rhs));
 }

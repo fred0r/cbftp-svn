@@ -15,13 +15,24 @@ enum PicoReturn
     NEED_MORE_DATA = -2
 };
 
-int parseContentLength(const std::string& str)
+long long parseContentLength(const std::string& str)
 {
+    size_t begin = str.find_first_not_of(" \t");
+    if (begin == std::string::npos) {
+        return -1;
+    }
+    size_t end = str.find_last_not_of(" \t");
+    std::string trimmed = str.substr(begin, end - begin + 1);
     try {
-        return std::stoi(str);
+        size_t pos = 0;
+        long long value = std::stoll(trimmed, &pos);
+        if (pos != trimmed.size()) {
+            return -1;
+        }
+        return value;
     }
     catch (std::exception& e) {
-        return 0;
+        return -1;
     }
 }
 } // namespace
@@ -42,7 +53,7 @@ Result::Result(State state, const char* data, size_t datalen, bool complete)
 {
 }
 
-Parser::Parser() : headers(maxheaderslen), headerslen(0), bodylen(0), contentlen(0), inbody(false) {
+Parser::Parser() : headers(maxheaderslen), headerslen(0), bodylen(0), contentlen(0), inbody(false), invalidheader(false) {
 }
 
 Parser::~Parser() {
@@ -60,6 +71,10 @@ Result Parser::feed(const char* data, size_t datalen) {
     memcpy(&headers[headerslen], data, headersleftlen);
     headerslen += headersleftlen;
     int nbytes = parse(&headers[0], headerslen, prevlen);
+    if (invalidheader) {
+      clear();
+      return Result(State::PARSING_FAILED);
+    }
     if (nbytes > 0) {
       Result res = Result(State::HEADERS, data, nbytes - prevlen, contentlen == 0);
       if (res.complete) {
@@ -108,6 +123,7 @@ void Parser::clear() {
     bodylen = 0;
     contentlen = 0;
     inbody = false;
+    invalidheader = false;
 }
 
 void Parser::parseHeaders(Message& msg, struct phr_header* headers, size_t numheaders) {
@@ -115,7 +131,17 @@ void Parser::parseHeaders(Message& msg, struct phr_header* headers, size_t numhe
     {
         if (headers[i].name_len == 14 && !strncasecmp(headers[i].name, "Content-Length", 14))
         {
-            contentlen = parseContentLength(std::string(headers[i].value, headers[i].value_len));
+            long long parsedlen = parseContentLength(std::string(headers[i].value, headers[i].value_len));
+            if (parsedlen < 0 || static_cast<unsigned long long>(parsedlen) > maxbodylen) {
+                invalidheader = true;
+            }
+            else {
+                contentlen = static_cast<size_t>(parsedlen);
+            }
+        }
+        else if (headers[i].name_len == 17 && !strncasecmp(headers[i].name, "Transfer-Encoding", 17))
+        {
+            invalidheader = true;
         }
         msg.addHeader(std::string(headers[i].name, headers[i].name_len),
                       std::string(headers[i].value, headers[i].value_len));

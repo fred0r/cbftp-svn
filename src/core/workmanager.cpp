@@ -167,24 +167,35 @@ void WorkManager::addReadyNotify(EventReceiver* er) {
   readynotify.push_back(er);
 }
 
+void WorkManager::setEventReceiverDestroyedCallback(std::function<void(EventReceiver*)> cb) {
+  receiverdestroyedcb = std::move(cb);
+}
+
 void WorkManager::flushEventReceiver(EventReceiver* er)
 {
   worklock.lock();
   if (running) {
     worklock.unlock();
     if (thread.isCurrentThread()) {
-      signalevents.flushEventReceiver(er);
+      int flushed = signalevents.flushEventReceiver(er);
       for (size_t i = 0; i < eventqueues.size(); ++i) {
         eventqueues[i]->lock();
         for (auto it = eventqueues[i]->begin(); it != eventqueues[i]->end();) {
           if (it->getReceiver() == er) {
-            eventqueues[i]->erase(it);
+            it = eventqueues[i]->erase(it);
+            ++flushed;
           }
           else {
             ++it;
           }
         }
         eventqueues[i]->unlock();
+      }
+      for (int i = 0; i < flushed; ++i) {
+        event.wait();
+      }
+      if (receiverdestroyedcb) {
+        receiverdestroyedcb(er);
       }
     }
     else {

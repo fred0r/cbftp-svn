@@ -132,6 +132,7 @@ bool SettingsLoaderSaver::setPlain(const std::string& key) {
 }
 
 void SettingsLoaderSaver::loadSettings() {
+  try {
   std::vector<std::string> lines;
   dfh->getDataFor("IOManager", &lines);
   std::vector<std::string>::iterator it;
@@ -877,6 +878,10 @@ void SettingsLoaderSaver::loadSettings() {
 
   for (std::list<SettingsAdder *>::iterator it = settingsadders.begin(); it != settingsadders.end(); it++) {
     (*it)->loadSettings(dfh);
+  }
+  }
+  catch (std::exception& e) {
+    global->getEventLog()->log("SettingsLoaderSaver", std::string("Error loading settings: ") + e.what(), Core::LogLevel::ERROR);
   }
 }
 

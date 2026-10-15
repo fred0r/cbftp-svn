@@ -411,6 +411,7 @@ public:
 private:
   bool handleError(EventReceiver* er, int sockid = -1);
   void closeSocketIntern(int sockid);
+  void unregisterReceiver(EventReceiver* er);
   void handleExternalIn(SocketInfo& socketinfo);
   void handleTCPConnectingOut(SocketInfo& socketinfo);
   void handleTCPPlainIn(SocketInfo& socketinfo);

@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <cassert>
+#include <stdexcept>
 #include <unistd.h>
 
 #include "../core/workmanager.h"
@@ -12,6 +13,7 @@
 #include "../subprocessmanager.h"
 #include "../engine.h"
 #include "../datafilehandler.h"
+#include "../eventlog.h"
 #include "../path.h"
 #include "../remotecommandhandler.h"
 #include "../sitelogic.h"
@@ -1065,6 +1067,7 @@ void Ui::switchToLast() {
 }
 
 void Ui::loadSettings(std::shared_ptr<DataFileHandler> dfh) {
+  try {
   std::vector<std::string> lines;
   dfh->getDataFor("UI", &lines);
   std::vector<std::string>::iterator it;
@@ -1134,6 +1137,10 @@ void Ui::loadSettings(std::shared_ptr<DataFileHandler> dfh) {
     else if (!setting.compare("pdf")) {
       efv.setPDFViewer(value);
     }
+  }
+  }
+  catch (std::exception& e) {
+    global->getEventLog()->log("Ui", std::string("Error loading UI settings: ") + e.what(), Core::LogLevel::ERROR);
   }
 }
 

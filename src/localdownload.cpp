@@ -101,6 +101,8 @@ void LocalDownload::FDInterDisconnected(int sockid, Core::DisconnectType reason,
     return;
   }
   this->sockid = -1;
+  bool writefailed = false;
+  std::string writeerror;
   if (!inmemory) {
     if (bufpos > 0) {
       if (!fileopened) {
@@ -109,6 +111,10 @@ void LocalDownload::FDInterDisconnected(int sockid, Core::DisconnectType reason,
         }
       }
       filestream.write(buf, bufpos);
+      if (filestream.fail()) {
+        writefailed = true;
+        writeerror = Core::util::getStrError(errno);
+      }
     }
     if (fileopened) {
       filestream.close();
@@ -118,7 +124,11 @@ void LocalDownload::FDInterDisconnected(int sockid, Core::DisconnectType reason,
     Core::BinaryData out(buf, buf + bufpos);
     ls->storeContent(storeid, out);
   }
-  if (reason != Core::DisconnectType::ERROR) {
+  if (writefailed) {
+    tm->localError("Failed writing file: " + writeerror);
+    tm->targetError(TM_ERR_OTHER);
+  }
+  else if (reason != Core::DisconnectType::ERROR) {
     tm->localInfo(details);
     tm->targetComplete();
   }
@@ -169,18 +179,30 @@ unsigned long long int LocalDownload::size() const {
 void LocalDownload::append(char* data, unsigned int datalen) {
   if (!buflen) {
     buf = (char*) malloc(CHUNK);
+    if (!buf) {
+      global->getIOManager()->closeSocket(sockid);
+      FDFail(sockid, "Out of memory while buffering download");
+      return;
+    }
     buflen = CHUNK;
   }
-  if (bufpos + datalen > buflen) {
+  size_t needed = static_cast<size_t>(bufpos) + datalen;
+  if (needed > buflen) {
     if (inmemory) {
-      while (bufpos + datalen > buflen) {
-        buflen *= 2;
+      size_t newlen = buflen ? buflen : 1;
+      while (newlen < needed) {
+        newlen *= 2;
       }
-      char* newbuf = static_cast<char*>(malloc(buflen));
-      global->getEventLog()->log("test", "Increasing to " + std::to_string(buflen));
+      char* newbuf = static_cast<char*>(malloc(newlen));
+      if (!newbuf) {
+        global->getIOManager()->closeSocket(sockid);
+        FDFail(sockid, "Out of memory while buffering download");
+        return;
+      }
       memcpy(newbuf, buf, bufpos);
       free(buf);
       buf = newbuf;
+      buflen = static_cast<unsigned int>(newlen);
     }
     else {
       if (!fileopened) {

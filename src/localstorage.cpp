@@ -16,6 +16,7 @@
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <vector>
 #include <unistd.h>
 #include <sys/types.h>
@@ -348,7 +349,10 @@ LocalPathInfo LocalStorage::getPathInfo(int requestid) {
 LocalFile LocalStorage::getLocalFile(const Path & path) {
   std::string name = path.baseName();
   struct stat status;
-  lstat(path.toString().c_str(), &status);
+  memset(&status, 0, sizeof(status));
+  if (lstat(path.toString().c_str(), &status) != 0) {
+    return LocalFile(name, 0, LocalFileType::FILE, "", "", 0, 0, 0, 0, 0, "");
+  }
   struct passwd * pwd = getpwuid(status.st_uid);
   std::string owner = pwd != NULL ? pwd->pw_name : std::to_string(status.st_uid);
   struct group * grp = getgrgid(status.st_gid);
@@ -584,7 +588,10 @@ void LocalStorage::deleteRequestData(LocalStorageRequestData* reqdata) {
 
 unsigned long long int LocalStorage::getFileSize(const Path & file) {
   struct stat status;
-  lstat(file.toString().c_str(), &status);
+  memset(&status, 0, sizeof(status));
+  if (lstat(file.toString().c_str(), &status) != 0) {
+    return 0;
+  }
   return status.st_size;
 }
 
@@ -632,7 +639,10 @@ void LocalStorage::setActivePortLast(int port) {
 
 int LocalStorage::getNextActivePort() {
   int port = currentactiveport;
-  currentactiveport = activeportfirst + ((currentactiveport + 1 - activeportfirst) % (activeportlast + 1 - activeportfirst));
+  int span = activeportlast + 1 - activeportfirst;
+  if (span > 0) {
+    currentactiveport = activeportfirst + ((currentactiveport + 1 - activeportfirst) % span);
+  }
   return port;
 }
 

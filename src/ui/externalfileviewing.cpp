@@ -47,6 +47,9 @@ int ExternalFileViewing::view(const Path & path, bool deleteafter) {
   global->getEventLog()->log("ExternalFileViewing", "Opening " + path.toString() + " with " + application);
   std::vector<std::string> args = {path.toString()};
   std::shared_ptr<SubProcess> subprocess = global->getSubProcessManager()->runProcess(this, application, args);
+  if (!subprocess) {
+    return -1;
+  }
   if (deleteafter) {
     files[subprocess->pid] = path;
   }

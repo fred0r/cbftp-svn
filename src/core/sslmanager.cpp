@@ -55,10 +55,9 @@ std::recursive_mutex g_lock;
 std::string SSLErrors() {
   std::string errstr;
   unsigned long err = 0;
-  std::string previouserr;
   while ((err = ERR_get_error())) {
-    errstr += (errstr.length() ? "," : "") + previouserr;
-    previouserr = ERR_error_string(err, nullptr);
+    std::string current = ERR_error_string(err, nullptr);
+    errstr += (errstr.length() ? "," : "") + current;
   }
   return errstr;
 }
@@ -129,6 +128,7 @@ EVP_PKEY* createPrivateKeyEC() {
   if (EVP_PKEY_paramgen_init(ctx) < 1) {
     getLogger()->log("SSLManager", "EVP_PKEY_paramgen_init failed: " + SSLErrors(), LogLevel::ERROR);
     EVP_PKEY_CTX_free(ctx);
+    return nullptr;
   }
   if (EVP_PKEY_keygen_init(ctx) < 1) {
     getLogger()->log("SSLManager", "EVP_PKEY_keygen_init failed: " + SSLErrors(), LogLevel::ERROR);
@@ -250,7 +250,12 @@ X509* createSelfSignedCertificate(EVP_PKEY* pkey) {
     X509_free(x509);
     return nullptr;
   }
-  if (!X509_sign(x509, pkey, EVP_sha256())) {
+  const EVP_MD* signmd = EVP_sha256();
+  SSLManager::KeyAlgorithm algo = SSLManager::getKeyAlgorithm();
+  if (algo == SSLManager::KeyAlgorithm::SLH_DSA_SHA2_128s || algo == SSLManager::KeyAlgorithm::ML_DSA_44) {
+    signmd = nullptr;
+  }
+  if (!X509_sign(x509, pkey, signmd)) {
     getLogger()->log("SSLManager", "X509_sign failed: " + SSLErrors(), LogLevel::ERROR);
     X509_free(x509);
     return nullptr;
@@ -342,6 +347,7 @@ SSLManager::KeyAlgorithm SSLManager::keyalgorithm =
 #endif
 
 int earlyCallback(SSL* ssl, int* alarm, void* arg) {
+  std::lock_guard<std::recursive_mutex> lock(g_lock);
   const char* name = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
   std::map<std::string, SSLContextInfo&>::const_iterator it;
   if (name != nullptr) {
@@ -426,7 +432,7 @@ void SSLManager::setKeyAlgorithm(KeyAlgorithm algo) {
 }
 
 bool SSLManager::isKeyAlgorithmAvailable(KeyAlgorithm algo) {
-  if (algo == KeyAlgorithm::SLH_DSA_SHA2_128s) {
+  if (algo == KeyAlgorithm::SLH_DSA_SHA2_128s || algo == KeyAlgorithm::ML_DSA_44) {
 #if OPENSSL_VERSION_NUMBER >= 0x30400000L
     return true;
 #else
@@ -522,6 +528,10 @@ std::list<std::pair<BinaryData, BinaryData>> SSLManager::certKeyPairs() {
 bool SSLManager::addCertKeyPair(const BinaryData& key, const BinaryData& cert) {
   std::lock_guard<std::recursive_mutex> lock(g_lock);
   assert(g_initialized);
+  if (key.empty() || cert.empty()) {
+    getLogger()->log("SSLManager", "Empty certificate or key data.", LogLevel::ERROR);
+    return false;
+  }
   const unsigned char* bufStart = &cert[0];
   X509* x509 = d2i_X509(nullptr, &bufStart, cert.size());
   if (!x509) { // PEM format?
@@ -548,17 +558,20 @@ bool SSLManager::addCertKeyPair(const BinaryData& key, const BinaryData& cert) {
     BIO* bio = BIO_new(BIO_s_mem());
     if (!bio) {
       getLogger()->log("SSLManager", "BIO_new failed.", LogLevel::ERROR);
+      X509_free(x509);
       return false;
     }
     if (!(BIO_write(bio, &key[0], key.size()) > 0)) {
       getLogger()->log("SSLManager", "BIO_write failed.", LogLevel::ERROR);
       BIO_free(bio);
+      X509_free(x509);
       return false;
     }
     pkey = PEM_read_bio_PrivateKey(bio, nullptr, nullptr, nullptr);
     BIO_free(bio);
     if (!pkey) {
       getLogger()->log("SSLManager", "Error while parsing private key: " + SSLErrors(), LogLevel::ERROR);
+      X509_free(x509);
       return false;
     }
   }
@@ -568,30 +581,42 @@ bool SSLManager::addCertKeyPair(const BinaryData& key, const BinaryData& cert) {
 bool SSLManager::addCertKeyPair(EVP_PKEY* pkey, X509* x509) {
   std::lock_guard<std::recursive_mutex> lock(g_lock);
   assert(g_initialized);
-  if (x509 != nullptr && pkey != nullptr) {
-    SSL_CTX* ctx = createServerContext();
-    if (!ctx) {
-      return false;
+  if (x509 == nullptr || pkey == nullptr) {
+    if (x509 != nullptr) {
+      X509_free(x509);
     }
-    if (SSL_CTX_use_certificate(ctx, x509) != 1) {
-      getLogger()->log("SSLManager", "Error while applying certificate: " + SSLErrors(), LogLevel::ERROR);
-      SSL_CTX_free(ctx);
-      return false;
+    if (pkey != nullptr) {
+      EVP_PKEY_free(pkey);
     }
-    if (SSL_CTX_use_PrivateKey(ctx, pkey) != 1) {
-      getLogger()->log("SSLManager", "Error while applying private key: " + SSLErrors(), LogLevel::ERROR);
-      SSL_CTX_free(ctx);
-      return false;
-    }
-    std::list<std::string> hostNames = getHostNamesFromCertificate(x509);
-    g_contexts.push_back(SSLContextInfo(ctx, pkey, x509));
-    for (auto& hostName : hostNames) {
-      std::pair<std::string, SSLContextInfo&> pair(hostName, g_contexts.back());
-      g_contexthosts.insert(pair);
-    }
-    return true;
+    return false;
   }
-  return false;
+  SSL_CTX* ctx = createServerContext();
+  if (!ctx) {
+    X509_free(x509);
+    EVP_PKEY_free(pkey);
+    return false;
+  }
+  if (SSL_CTX_use_certificate(ctx, x509) != 1) {
+    getLogger()->log("SSLManager", "Error while applying certificate: " + SSLErrors(), LogLevel::ERROR);
+    SSL_CTX_free(ctx);
+    X509_free(x509);
+    EVP_PKEY_free(pkey);
+    return false;
+  }
+  if (SSL_CTX_use_PrivateKey(ctx, pkey) != 1) {
+    getLogger()->log("SSLManager", "Error while applying private key: " + SSLErrors(), LogLevel::ERROR);
+    SSL_CTX_free(ctx);
+    X509_free(x509);
+    EVP_PKEY_free(pkey);
+    return false;
+  }
+  std::list<std::string> hostNames = getHostNamesFromCertificate(x509);
+  g_contexts.push_back(SSLContextInfo(ctx, pkey, x509));
+  for (auto& hostName : hostNames) {
+    std::pair<std::string, SSLContextInfo&> pair(hostName, g_contexts.back());
+    g_contexthosts.insert(pair);
+  }
+  return true;
 }
 
 void SSLManager::clearCertKeyPairs() {

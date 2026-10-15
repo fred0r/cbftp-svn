@@ -44,6 +44,7 @@ struct QueuedItem {
   bool isDirectory = false;
   unsigned int id = 0;
   unsigned int transferJobId = 0;
+  unsigned int retries = 0;
   unsigned int getId() const { return id; }
 
   std::string getDirectionLabel() const {
@@ -163,6 +164,9 @@ public:
   bool isInQueue(const QueuedItem& item) const;
   JobStartResult startQueuedItem(const std::shared_ptr<QueuedItem>& item);
   JobStartResult startQueueBatch(const std::shared_ptr<QueuedItem>& item);
+  bool queueBatchCanStart(const std::shared_ptr<QueuedItem>& item) const;
+  void resetQueueBatchJobIds(const std::shared_ptr<QueuedItem>& item);
+  void incrementQueueBatchRetries(const std::shared_ptr<QueuedItem>& item);
   unsigned int countStartedQueueItems() const;
   void removeFromQueue(unsigned int id);
   void clearQueue();

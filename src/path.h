@@ -15,6 +15,7 @@ public:
   const std::string & baseName() const;
   bool isAbsolute() const;
   bool isRelative() const;
+  static bool isSafeFilename(const std::string &);
   Path operator/(const Path &) const;
   Path operator/(const std::string &) const;
   Path operator/(const char *) const;

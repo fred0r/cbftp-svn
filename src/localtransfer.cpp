@@ -49,6 +49,11 @@ void LocalTransfer::tick(int) {
 }
 
 bool LocalTransfer::openFile(bool read) {
+  if (!Path::isSafeFilename(filename)) {
+    global->getIOManager()->closeSocket(sockid);
+    FDFail(sockid, "Refusing unsafe filename: " + filename);
+    return false;
+  }
   if (read ? !FileSystem::fileExistsReadable(path) : !FileSystem::fileExistsWritable(path)) {
     global->getIOManager()->closeSocket(sockid);
     FDFail(sockid, std::string("Failed to access " + path.toString()).c_str());

@@ -135,10 +135,15 @@ whole batch.
 In the queue screen you can:
 - Press PageUp/PageDown to scroll through the list
 - Press Enter to view transfer details of the selected file
-- Press t to start the batch of the selected item
-- Press T to start all batches; transfers are started per source+destination
-  site pair, so a second batch for the same site pair waits until the former
-  transfer completes, while different site pairs run concurrently
+- Press t to start only the selected item
+- Press T to start the whole queue; items sharing the same source and
+  destination (site, path and section) are batched into a single transfer job,
+  and starting is limited by each site's SITE OPTIONS slot configuration
+  (login slots, upload/download slots, download slots on transfer jobs, and
+  leave one slot free). A batch for a site that currently has no free slot
+  waits until capacity becomes available while the queue screen is open.
+  Failed or aborted items are retried automatically up to two times (three
+  attempts in total)
 - Press s to stop the selected transfer after the current release
 - Press S to stop the selected transfer after the current file
 - Press + to move the selected item up in the queue
@@ -151,7 +156,8 @@ In the queue screen you can:
 The status column shows the phase of each queued file: wait (not started),
 lgn (connecting/logging in), up/dn/fxp with a percentage (transferring),
 done, fail or abor. Items stay in the queue until their TransferJob reaches
-DONE status, then are removed.
+DONE status, then are removed. Failed or aborted items remain in the queue
+(and are retried by T until the attempt limit is reached).
 
 The queue is memory-only and will be lost when cbftp exits.
 

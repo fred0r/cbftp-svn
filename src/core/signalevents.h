@@ -21,7 +21,7 @@ public:
   bool set(EventReceiver* er, int signal, int value);
   bool hasEvent() const;
   SignalData getClearFirst();
-  void flushEventReceiver(EventReceiver* er);
+  int flushEventReceiver(EventReceiver* er);
 private:
   int hasevent;
   std::vector<SignalData> slots;

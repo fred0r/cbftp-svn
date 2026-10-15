@@ -41,14 +41,28 @@ SubProcessManager::SubProcessManager() {
 }
 
 std::shared_ptr<SubProcess> SubProcessManager::runProcess(SubProcessCallback* cb, const Path& path, const std::vector<std::string>& args) {
+  if (args.size() + 2 > 256) {
+    global->getEventLog()->log("SubProcessManager", "Too many arguments for external process", Core::LogLevel::ERROR);
+    return std::shared_ptr<SubProcess>();
+  }
   int stdinpipe[2];
   int stdoutpipe[2];
   int stderrpipe[2];
   if (pipe(stdinpipe) || pipe(stdoutpipe) || pipe(stderrpipe)) {
-    perror(("Error during pipe(): " + Core::util::getStrError(errno)).c_str());
-    exit(EXIT_FAILURE);
+    global->getEventLog()->log("SubProcessManager", "Error during pipe(): " + Core::util::getStrError(errno), Core::LogLevel::ERROR);
+    return std::shared_ptr<SubProcess>();
   };
   int pid = fork();
+  if (pid < 0) {
+    close(stdinpipe[0]);
+    close(stdinpipe[1]);
+    close(stdoutpipe[0]);
+    close(stdoutpipe[1]);
+    close(stderrpipe[0]);
+    close(stderrpipe[1]);
+    global->getEventLog()->log("SubProcessManager", "Error during fork(): " + Core::util::getStrError(errno), Core::LogLevel::ERROR);
+    return std::shared_ptr<SubProcess>();
+  }
   if (!pid) {
     close(stdinpipe[1]);
     close(stdoutpipe[0]);
@@ -93,6 +107,9 @@ void SubProcessManager::FDData(int sockid) {
   for (std::list<std::shared_ptr<SubProcess>>::iterator it = subprocesses.begin(); it != subprocesses.end(); it++) {
     if ((*it)->stdouthandle == sockid) {
       char* buf = blockpool.getBlock();
+      if (!buf) {
+        return;
+      }
       int brecv = read((*it)->stdoutfd, buf, blockpool.blockSize());
       if (brecv <= 0) {
         blockpool.returnBlock(buf);
@@ -108,6 +125,9 @@ void SubProcessManager::FDData(int sockid) {
     }
     else if ((*it)->stderrhandle == sockid) {
       char* buf = blockpool.getBlock();
+      if (!buf) {
+        return;
+      }
       int brecv = read((*it)->stderrfd, buf, blockpool.blockSize());
       if (brecv <= 0) {
         blockpool.returnBlock(buf);
@@ -130,7 +150,9 @@ void SubProcessManager::killProcess(int pid) {
       global->getIOManager()->closeSocket((*it)->stdinhandle);
       global->getIOManager()->closeSocket((*it)->stdouthandle);
       global->getIOManager()->closeSocket((*it)->stderrhandle);
-      kill(pid, SIGHUP);
+      if ((*it)->pid > 0) {
+        kill((*it)->pid, SIGHUP);
+      }
       if ((*it)->cb != nullptr) {
         (*it)->cb->processExited(pid, -1);
       }
@@ -145,7 +167,9 @@ void SubProcessManager::killAll() {
     global->getIOManager()->closeSocket((*it)->stdinhandle);
     global->getIOManager()->closeSocket((*it)->stdouthandle);
     global->getIOManager()->closeSocket((*it)->stderrhandle);
-    kill((*it)->pid, SIGHUP);
+    if ((*it)->pid > 0) {
+      kill((*it)->pid, SIGHUP);
+    }
     if ((*it)->cb != nullptr) {
       (*it)->cb->processExited((*it)->pid, -1);
     }

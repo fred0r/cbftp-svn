@@ -55,5 +55,6 @@ private:
     size_t bodylen;
     size_t contentlen;
     bool inbody;
+    bool invalidheader;
 };
 } // namespace http

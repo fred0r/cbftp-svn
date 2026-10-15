@@ -4,6 +4,7 @@
 #include <climits>
 #include <ctime>
 #include <cstring>
+#include <stdexcept>
 #include <openssl/sha.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
@@ -145,19 +146,30 @@ void Crypto::base64Encode(const Core::BinaryData & indata, Core::BinaryData & ou
 }
 
 void Crypto::base64Decode(const Core::BinaryData & indata, Core::BinaryData & outdata) {
-  if (indata.empty()) {
-    outdata.resize(0);
+  outdata.clear();
+  if (indata.empty() || indata.size() % 4 != 0) {
     return;
   }
-  int pos = indata.size();
-  int padding = 0;
-  while (--pos >= 0 && indata[pos] == '=') {
+  unsigned int padding = 0;
+  size_t pos = indata.size();
+  while (pos > 0 && indata[pos - 1] == '=') {
     ++padding;
+    --pos;
+  }
+  if (padding > 2) {
+    return;
   }
   unsigned int outsize = indata.size() / 4 * 3;
+  if (padding > outsize) {
+    return;
+  }
   outdata.resize(outsize);
-  EVP_DecodeBlock(&outdata[0], &indata[0], indata.size());
-  outdata.resize(outsize - padding);
+  int written = EVP_DecodeBlock(&outdata[0], &indata[0], static_cast<int>(indata.size()));
+  if (written < 0 || static_cast<unsigned int>(written) < padding) {
+    outdata.clear();
+    return;
+  }
+  outdata.resize(static_cast<unsigned int>(written) - padding);
 }
 
 bool Crypto::isMostlyASCII(const Core::BinaryData& data) {
@@ -186,7 +198,12 @@ void Crypto::fromHex(const std::string& indata, Core::BinaryData& outdata) {
 }
 
 Core::BinaryData Crypto::randomBytes(int len) {
-  Core::BinaryData data((size_t)len);
-  RAND_bytes(data.data(), len);
+  if (len <= 0) {
+    return Core::BinaryData();
+  }
+  Core::BinaryData data(static_cast<size_t>(len));
+  if (RAND_bytes(data.data(), len) != 1) {
+    throw std::runtime_error("RAND_bytes failed");
+  }
   return data;
 }

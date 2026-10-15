@@ -34,7 +34,11 @@ File::File(const std::string & statline, int touch) :
   uploading(false),
   downloading(0)
 {
-  if (isdigit(statline[0]) && isdigit(statline[1])) {
+  if (statline.length() < 2) {
+    valid = false;
+    return;
+  }
+  if (isdigit(static_cast<unsigned char>(statline[0])) && isdigit(static_cast<unsigned char>(statline[1]))) {
     valid = parseMSDOSSTATLine(statline);
   }
   else {

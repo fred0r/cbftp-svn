@@ -43,7 +43,10 @@ public:
     control(addfd, EVFILT_WRITE, EV_ADD, userdata);
   }
   void removeFD(int delfd) override {
-    control(delfd, EVFILT_READ | EVFILT_WRITE, EV_DELETE);
+    struct kevent ev[2];
+    EV_SET(&ev[0], delfd, EVFILT_READ, EV_DELETE, 0, 0, nullptr);
+    EV_SET(&ev[1], delfd, EVFILT_WRITE, EV_DELETE, 0, 0, nullptr);
+    kevent(kqueuefd, ev, 2, nullptr, 0, nullptr);
   }
   void setFDIn(int modfd, unsigned int userdata) override {
     controlSet(modfd, EVFILT_READ, EVFILT_WRITE, userdata);

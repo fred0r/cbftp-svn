@@ -22,7 +22,6 @@
 #include "httpserver.h"
 #include "sectionutil.h"
 
-#define DEFAULT_PASS "DEFAULT"
 #define RETRY_DELAY 30000
 
 namespace {
@@ -81,7 +80,7 @@ std::list<std::shared_ptr<SiteLogic> > getSiteLogicList(const std::string & site
 RemoteCommandHandler::RemoteCommandHandler() :
   enabled(false),
   encrypted(true),
-  password(DEFAULT_PASS),
+  password(""),
   port(DEFAULT_API_PORT),
   retrying(false),
   connected(false),
@@ -141,6 +140,11 @@ void RemoteCommandHandler::setNotify(RemoteCommandNotify notify) {
 }
 
 void RemoteCommandHandler::connect() {
+  if (password.empty()) {
+    global->getEventLog()->log("RemoteCommandHandler",
+        "Refusing to start UDP API: no password configured.", Core::LogLevel::WARNING);
+    return;
+  }
   int udpport = getUDPPort();
   sockid = global->getIOManager()->registerUDPServerSocket(this, udpport, Core::AddressFamily::IPV4, !listenall);
   if (sockid >= 0) {
@@ -184,11 +188,10 @@ void RemoteCommandHandler::handleMessage(const std::string & message) {
     return;
   }
   std::string & pass = tokens[0];
-  bool passok = pass == password;
-  if (passok) {
-    for (unsigned int i = 0; i < pass.length(); i++) {
-      pass[i] = '*';
-    }
+  bool passok = !password.empty() && pass.size() == password.size() &&
+      CRYPTO_memcmp(pass.data(), password.data(), pass.size()) == 0;
+  for (unsigned int i = 0; i < pass.length(); i++) {
+    pass[i] = '*';
   }
   global->getEventLog()->log("RemoteCommandHandler", "Received: " + util::join(tokens));
   if (!passok) {

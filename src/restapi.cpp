@@ -6,6 +6,8 @@
 #include <memory>
 #include <stdexcept>
 
+#include <openssl/crypto.h>
+
 #include "core/polling.h"
 #include "core/sslmanager.h"
 #include "core/tickpoke.h"
@@ -48,6 +50,13 @@ namespace {
 
 #define RESTAPI_TICK_INTERVAL_MS 500
 #define DEFAULT_TIMEOUT_SECONDS 60
+
+bool constantTimeEquals(const std::string& a, const std::string& b) {
+  if (a.size() != b.size()) {
+    return false;
+  }
+  return CRYPTO_memcmp(a.data(), b.data(), a.size()) == 0;
+}
 
 enum class DeleteMode {
   NONE,
@@ -143,7 +152,7 @@ std::string stripColorCodes(const std::string& str) {
       for (int j = 0; j < 9 && closepos == -1; ++j) {
         size_t pos = i + 2 + j;
         if (rawlen > pos) {
-          if (isdigit(str[pos])) {
+          if (isdigit(static_cast<unsigned char>(str[pos]))) {
           }
           else if (str[pos] == ';' || str[pos] == 'm') {
             if (str[pos] == 'm') {
@@ -1223,7 +1232,7 @@ void RestApi::handleSiteGet(RestApiCallback* cb, int connrequestid, const http::
   }
   j["addresses"] = addrlist;
   j["user"] = site->getUser();
-  j["password"] = site->getPass();
+  j["password_set"] = !site->getPass().empty();
   j["base_path"] = site->getBasePath().toString();
   j["max_logins"] = site->getMaxLogins();
   j["max_sim_up"] = site->getInternMaxUp();
@@ -1320,6 +1329,7 @@ void RestApi::handleSitePatch(RestApiCallback* cb, int connrequestid, const http
 void RestApi::handleSiteDelete(RestApiCallback* cb, int connrequestid, const http::Request& request) {
   Path path = request.getPath();
   std::string sitename = path.level(1).toString();
+  global->getSiteLogicManager()->deleteSiteLogic(sitename);
   global->getSiteManager()->deleteSite(sitename);
   http::Response response(204);
   response.appendHeader("Content-Length", "0");
@@ -2186,15 +2196,23 @@ void RestApi::handleRequest(RestApiCallback* cb, int connrequestid, const http::
   if (request.hasHeader("Authorization")) {
     std::string encoded = request.getHeaderValue("Authorization");
     if (!encoded.compare(0, 6, "Basic ")) {
-      Core::BinaryData out;
-      Crypto::base64Decode(Core::BinaryData(encoded.begin() + 6, encoded.end()), out);
-      std::string decoded(out.begin(), out.end());
-      size_t split = decoded.find(':');
-      if (split != std::string::npos) {
-        std::string password = decoded.substr(split + 1);
-        if (password == global->getRemoteCommandHandler()->getPassword() || tempauthtokens.find(password) != tempauthtokens.end()) {
-          authorized = true;
+      try {
+        Core::BinaryData out;
+        Crypto::base64Decode(Core::BinaryData(encoded.begin() + 6, encoded.end()), out);
+        std::string decoded(out.begin(), out.end());
+        size_t split = decoded.find(':');
+        if (split != std::string::npos) {
+          std::string password = decoded.substr(split + 1);
+          std::string configured = global->getRemoteCommandHandler()->getPassword();
+          if (!configured.empty() && constantTimeEquals(password, configured)) {
+            authorized = true;
+          }
+          if (!authorized && !password.empty() && tempauthtokens.find(password) != tempauthtokens.end()) {
+            authorized = true;
+          }
         }
+      }
+      catch (std::exception& e) {
       }
     }
   }
@@ -2249,6 +2267,10 @@ void RestApi::handleRequest(RestApiCallback* cb, int connrequestid, const http::
     return;
   }
   catch (std::invalid_argument& e) {
+    cb->requestHandled(connrequestid, badRequestResponse(e.what()));
+    return;
+  }
+  catch (std::exception& e) {
     cb->requestHandled(connrequestid, badRequestResponse(e.what()));
     return;
   }
