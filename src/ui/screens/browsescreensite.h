@@ -63,7 +63,7 @@ private:
   void disableGotoMode();
   void clearSoftSelects();
   bool handleReadyRequests();
-  void loadFileListFromRequest();
+  void loadFileListFromRequest(const BrowseScreenRequest& request);
   void updateTransferJobMonitoring();
   bool transferJobTargetsPath(const std::shared_ptr<TransferJob>&) const;
   bool hasPendingFileListRequest() const;

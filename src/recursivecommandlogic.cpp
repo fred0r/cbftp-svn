@@ -38,6 +38,10 @@ bool RecursiveCommandLogic::isActive() const {
   return active;
 }
 
+void RecursiveCommandLogic::abort() {
+  active = false;
+}
+
 int RecursiveCommandLogic::getAction(const Path& currentpath, Path& actiontarget) {
   if (listtarget) {
     if (currentpath == targetpath) {
@@ -105,6 +109,11 @@ void RecursiveCommandLogic::addFileList(const std::shared_ptr<FileList>& fl) {
 
 void RecursiveCommandLogic::failedCwd() {
   listtarget = false;
+  // Drop entries that live in the directory we failed to enter; they cannot be
+  // processed, and leaving them would retry the same failing CWD forever.
+  while (deletefiles.size() && Path(deletefiles.back().first.dirName()) == targetpath) {
+    deletefiles.pop_back();
+  }
   if (targetpath == basepath) {
     active = false;
   }
