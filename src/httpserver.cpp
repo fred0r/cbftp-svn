@@ -46,6 +46,11 @@ void HTTPServer::setPort(int port) {
 }
 
 void HTTPServer::bindListen() {
+  if (global->getRemoteCommandHandler()->getPassword().empty()) {
+    global->getEventLog()->log("HTTPServer",
+        "Refusing to start HTTP API: no password configured.", Core::LogLevel::WARNING);
+    return;
+  }
   bool listenall = global->getRemoteCommandHandler()->getListenAll();
   sockid4 = global->getIOManager()->registerTCPServerSocket(this, port, Core::AddressFamily::IPV4, !listenall);
   if (Core::IOManager::ipv6Enabled()) {

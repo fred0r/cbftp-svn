@@ -1,5 +1,6 @@
 #pragma once
 
+#include <list>
 #include <memory>
 #include <set>
 #include <string>
@@ -86,6 +87,7 @@ class Race : public Core::EventReceiver, public TransferStatusCallback {
     unsigned int guessedtotalnumfiles;
     std::unordered_map<std::string, std::unordered_map<std::string, SizeLocationTrack> > sizelocationtrackers;
     std::unordered_map<FailedTransferKey, TransferAttemptCounter, FailedTransferHash> transferattempts;
+    std::list<std::shared_ptr<TransferStatus>> registeredtransfers;
     int checkcount;
     std::string timestamp;
     std::string timestampfull;

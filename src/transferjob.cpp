@@ -208,6 +208,11 @@ void TransferJob::fxpJob(unsigned int id, const std::shared_ptr<SiteLogic>& srcs
 }
 
 TransferJob::~TransferJob() {
+  for (auto& ts : transfers) {
+    if (ts && ts->getCallback() == this) {
+      ts->setCallback(nullptr);
+    }
+  }
   if (!isDone()) {
     setDone();
   }
@@ -395,11 +400,19 @@ bool TransferJob::isDirectory() const {
     return false;
   }
   if (type == TRANSFERJOB_FXP || type == TRANSFERJOB_DOWNLOAD) {
-    File* f = srcfilelists.at("")->getFile(srcfile);
+    auto flsit = srcfilelists.find("");
+    if (flsit == srcfilelists.end()) {
+      return false;
+    }
+    File* f = flsit->second->getFile(srcfile);
     return f != nullptr && f->isDirectory();
   }
-  auto it = localfilelists.at("")->find(dstfile);
-  return it != localfilelists.at("")->end() && it->second.isDirectory();
+  auto lflit = localfilelists.find("");
+  if (lflit == localfilelists.end()) {
+    return false;
+  }
+  auto it = lflit->second->find(dstfile);
+  return it != lflit->second->end() && it->second.isDirectory();
 }
 
 bool TransferJob::tryReserveListTarget(const std::shared_ptr<FileList>& fl, int connid) {
@@ -953,7 +966,11 @@ void TransferJob::countTotalFiles() {
       int files = 0;
       const SkipList& dstskip = dst->getSite()->getSkipList();
       for (std::unordered_map<std::string, std::shared_ptr<FileList>>::iterator it = srcfilelists.begin(); it != srcfilelists.end(); it++) {
-        std::shared_ptr<FileList> dstlist = dstfilelists.at(it->first);
+        auto dstlistit = dstfilelists.find(it->first);
+        if (dstlistit == dstfilelists.end()) {
+          continue;
+        }
+        std::shared_ptr<FileList> dstlist = dstlistit->second;
         if (it->first == "") {
           if (multifile) {
             for (std::list<std::string>::const_iterator fit = multifiles.begin(); fit != multifiles.end(); fit++) {
@@ -1002,7 +1019,11 @@ void TransferJob::countTotalFiles() {
       const SkipList& dstskip = dst->getSite()->getSkipList();
       std::unordered_map<std::string, std::shared_ptr<LocalFileList>>::const_iterator it;
       for (it = localfilelists.begin(); it != localfilelists.end(); it++) {
-        std::shared_ptr<FileList> dstlist = dstfilelists.at(it->first);
+        auto dstlistit = dstfilelists.find(it->first);
+        if (dstlistit == dstfilelists.end()) {
+          continue;
+        }
+        std::shared_ptr<FileList> dstlist = dstlistit->second;
         if (it->first == "") {
           if (multifile) {
             for (std::list<std::string>::const_iterator fit = multifiles.begin(); fit != multifiles.end(); fit++) {

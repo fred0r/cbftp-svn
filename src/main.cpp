@@ -33,6 +33,15 @@
 
 namespace {
 
+/* Receives termination signals on the WorkManager thread (via the signal
+ * self-pipe) so that breakLoop() is never called from signal context. */
+class Terminator : public Core::EventReceiver {
+public:
+  void signal(int sig, int value) override {
+    global->getTickPoke()->breakLoop();
+  }
+};
+
 class Main {
 public:
   Main() {
@@ -79,27 +88,25 @@ public:
     if (!uibase->init()) exit(1);
     wm->init("cbftp");
     iom->init("cbftp");
+    Core::registerSignalDispatch(SIGABRT, wm, &terminator);
+    Core::registerSignalDispatch(SIGTERM, wm, &terminator);
+    Core::registerSignalDispatch(SIGINT, wm, &terminator);
+    Core::registerSignalDispatch(SIGQUIT, wm, &terminator);
     sls->init();
     tp->tickerLoop();
     global->getSubProcessManager()->killAll();
     uibase->kill();
     sls->saveSettings();
   }
+private:
+  Terminator terminator;
 };
-
-void sighandler(int sig) {
-  global->getTickPoke()->breakLoop();
-}
 
 } // namespace
 
 int main(int argc, char* argv[]) {
   struct rlimit rl = {0, 0};
   setrlimit(RLIMIT_CORE, &rl);
-  Core::registerSignalHandler(SIGABRT, sighandler);
-  Core::registerSignalHandler(SIGTERM, sighandler);
-  Core::registerSignalHandler(SIGINT, sighandler);
-  Core::registerSignalHandler(SIGQUIT, sighandler);
 
   Main();
 }

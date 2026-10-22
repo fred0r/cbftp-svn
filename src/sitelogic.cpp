@@ -803,6 +803,9 @@ void SiteLogic::commandFail(int id, FailureType failuretype) {
           handleRecursiveLogic(id);
         }
         else {
+          if (connstatetracker[id].hasRequest()) {
+            setRequestReady(id, NULL, false);
+          }
           handleConnection(id);
         }
         return;
@@ -992,7 +995,12 @@ void SiteLogic::commandFail(int id, FailureType failuretype) {
 
 void SiteLogic::checkFailListRequest(int id) {
   if (connstatetracker[id].hasRequest()) {
-    if (connstatetracker[id].getRequest()->getType() == REQ_FILELIST) {
+    int type = connstatetracker[id].getRequest()->getType();
+    if (type == REQ_FILELIST) {
+      setRequestReady(id, NULL, false);
+    }
+    else if (type == REQ_DEL_RECURSIVE || type == REQ_DEL_OWN) {
+      connstatetracker[id].getRecursiveLogic()->abort();
       setRequestReady(id, NULL, false);
     }
   }
@@ -2314,6 +2322,7 @@ void SiteLogic::cleanupConnection(int id) {
     reportTransferErrorAndFinish(id, TM_ERR_CLEANUP);
   }
   if (connstatetracker[id].hasRequest()) {
+    connstatetracker[id].getRecursiveLogic()->abort();
     setRequestReady(id, NULL, false);
   }
   for (int i = 0; i < (int)conns.size(); ++i) {

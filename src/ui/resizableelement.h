@@ -11,8 +11,12 @@
 class ResizableElement : public MenuSelectOptionElement {
 public:
   ResizableElement() :
+    maxwidth(0),
+    resizemethod(RESIZE_REMOVE),
     rightaligned(false),
     shortspacing(false),
+    highprio(0),
+    lowprio(0),
     visible(false),
     expandable(false) {
   }

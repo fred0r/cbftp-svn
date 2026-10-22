@@ -1,5 +1,7 @@
 #include "queuescreen.h"
 
+#include <unordered_set>
+
 #include "../ui.h"
 #include "../menuselectadjustableline.h"
 #include "../menuselectoptionelement.h"
@@ -21,12 +23,15 @@ enum KeyAction {
   KEYACTION_STOP_FILE,
   KEYACTION_CONTINUE
 };
+
+// Maximum automatic start attempts per queued entry (initial attempt + 2 retries).
+const unsigned int MAX_QUEUE_ATTEMPTS = 3;
 }
 
 QueueScreen::QueueScreen(Ui* ui) : UIWindow(ui, "QueueScreen"), table(*vv) {
   keybinds.addBind(10, KEYACTION_INFO, "Details");
-  keybinds.addBind('t', KEYACTION_ENTER, "Start batch");
-  keybinds.addBind('T', KEYACTION_START_ALL, "Start all batches");
+  keybinds.addBind('t', KEYACTION_ENTER, "Start selected");
+  keybinds.addBind('T', KEYACTION_START_ALL, "Start all");
   keybinds.addBind(KEY_DC, KEYACTION_DELETE, "Remove");
   keybinds.addBind('c', KEYACTION_CONTINUE, "Continue");
   keybinds.addBind('q', KEYACTION_BACK_CANCEL, "Return");
@@ -49,7 +54,6 @@ void QueueScreen::initialize(unsigned int row, unsigned int col) {
   animtick = 0;
   delete_pending_id = 0;
   clear_pending = false;
-  startall_attempted.clear();
   sourceitems.clear();
   global->getTickPoke()->stopPoke(this, 0);
   engine = global->getEngine();
@@ -182,7 +186,8 @@ bool QueueScreen::keyPressed(unsigned int ch) {
             }
           }
           if (startable) {
-            JobStartResult result = engine->startQueueBatch(qi);
+            qi->retries = 0;
+            JobStartResult result = engine->startQueuedItem(qi);
             if (result) {
               ui->addTempLegendTransferJob(result.id);
             }
@@ -198,7 +203,7 @@ bool QueueScreen::keyPressed(unsigned int ch) {
       if (hascontents) {
         animtick = 2;
         startall_pending = true;
-        startall_attempted.clear();
+        engine->resetQueueRetries();
         startAllPending();
         ui->redraw();
       }
@@ -471,34 +476,32 @@ void QueueScreen::startAllPending() {
     startall_pending = false;
     return;
   }
-  std::unordered_set<std::string> runningpairs;
+  bool startedany = false;
+  std::unordered_set<std::string> processedroutes;
   for (auto it = engine->getQueueBegin(); it != engine->getQueueEnd(); ++it) {
     std::shared_ptr<QueuedItem> qi = *it;
     if (qi->transferJobId) {
       std::shared_ptr<TransferJob> tj = engine->getTransferJob(qi->transferJobId);
       if (tj && !tj->isDone()) {
-        runningpairs.insert(qi->getSitePairKey());
+        continue;
       }
     }
-  }
-  bool startedany = false;
-  for (auto it = engine->getQueueBegin(); it != engine->getQueueEnd(); ++it) {
-    std::shared_ptr<QueuedItem> qi = *it;
-    if (qi->transferJobId) {
+    std::string routekey = qi->getRouteKey();
+    if (processedroutes.find(routekey) != processedroutes.end()) {
       continue;
     }
-    if (startall_attempted.find(qi->id) != startall_attempted.end()) {
+    processedroutes.insert(routekey);
+    if (qi->retries >= MAX_QUEUE_ATTEMPTS) {
       continue;
     }
-    std::string pairkey = qi->getSitePairKey();
-    if (runningpairs.find(pairkey) != runningpairs.end()) {
+    if (!engine->queueBatchCanStart(qi)) {
       continue;
     }
-    startall_attempted.insert(qi->id);
+    ++qi->retries;
+    engine->resetQueueBatchJobIds(qi);
     JobStartResult result = engine->startQueueBatch(qi);
     if (result) {
       startedany = true;
-      runningpairs.insert(pairkey);
       ui->addTempLegendTransferJob(result.id);
     }
     else if (!result.error.empty()) {
@@ -507,8 +510,5 @@ void QueueScreen::startAllPending() {
   }
   if (startedany) {
     ui->redraw();
-  }
-  if (runningpairs.empty()) {
-    startall_pending = false;
   }
 }

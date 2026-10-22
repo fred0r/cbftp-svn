@@ -3,7 +3,6 @@
 #include <list>
 #include <memory>
 #include <string>
-#include <unordered_set>
 
 #include "../../core/eventreceiver.h"
 
@@ -36,7 +35,6 @@ private:
   unsigned int delete_pending_id;
   bool clear_pending;
   bool startall_pending = false;
-  std::unordered_set<unsigned int> startall_attempted;
   MenuSelectOption table;
   Engine * engine;
   bool hascontents;

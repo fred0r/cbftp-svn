@@ -278,12 +278,22 @@ void BrowseScreenSite::update() {
 
 bool BrowseScreenSite::handleReadyRequests() {
   bool handled = false;
-  while (!requests.empty() && sitelogic->requestReady(requests.front().id)) {
+  for (std::list<BrowseScreenRequest>::iterator it = requests.begin(); it != requests.end();) {
+    if (!sitelogic->requestReady(it->id)) {
+      // A pending navigation request keeps its order (newest navigation wins),
+      // but a pending non-navigation operation (delete/wipe/mkdir/move/nuke)
+      // must not block navigation, so skip it and process later requests.
+      if (it->type == BrowseScreenRequestType::FILELIST) {
+        break;
+      }
+      ++it;
+      continue;
+    }
     handled = true;
-    const BrowseScreenRequest & request = requests.front();
+    const BrowseScreenRequest request = *it;
     switch (request.type) {
       case BrowseScreenRequestType::FILELIST:
-        loadFileListFromRequest();
+        loadFileListFromRequest(request);
         break;
       case BrowseScreenRequestType::NUKE: {
         bool success = sitelogic->finishRequest(request.id);
@@ -364,7 +374,7 @@ bool BrowseScreenSite::handleReadyRequests() {
         assert(false);
         break;
     }
-    requests.pop_front();
+    it = requests.erase(it);
   }
   if (handled) {
     if (requests.empty() && refreshfilelistafter) {
@@ -378,9 +388,7 @@ bool BrowseScreenSite::handleReadyRequests() {
   return handled;
 }
 
-void BrowseScreenSite::loadFileListFromRequest() {
-  assert(!requests.empty());
-  const BrowseScreenRequest & request = requests.front();
+void BrowseScreenSite::loadFileListFromRequest(const BrowseScreenRequest& request) {
   FileListData * newfilelistdata = sitelogic->getFileListData(request.id);
   if (newfilelistdata == nullptr) {
     sitelogic->finishRequest(request.id);

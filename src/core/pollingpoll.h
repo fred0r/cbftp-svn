@@ -112,7 +112,9 @@ public:
   }
 private:
   void removeFDIntern(int delfd) {
+    std::lock_guard<std::mutex> lock(maplock);
     fdmap.erase(delfd);
+    fdmapupdated = true;
   }
   std::mutex maplock;
   std::vector<struct pollfd> fds;

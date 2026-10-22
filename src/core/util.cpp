@@ -76,15 +76,19 @@ int wildcmpCase(const char *wild, const char *string) {
 
 std::string getStrError(int error) {
   char buf[ERR_BUF_SIZE];
-  // some casting for XSI compatibility
-  char* ret = reinterpret_cast<char*>(strerror_r(error, buf, sizeof(buf)));
+#if defined(_GNU_SOURCE)
+  char* ret = strerror_r(error, buf, sizeof(buf));
   if (ret) {
-    if (reinterpret_cast<long long int>(ret) == -1) {
-      return getStrError(errno);
-    }
     return ret;
   }
   return buf;
+#else
+  int ret = strerror_r(error, buf, sizeof(buf));
+  if (ret == 0) {
+    return buf;
+  }
+  return "Unknown error " + std::to_string(error);
+#endif
 }
 
 } // namespace util

@@ -142,14 +142,18 @@ void TransferMonitor::engageFXP(
   }
   int maxsls = sls->getSite()->getMaxTransferTimeSeconds();
   int maxsld = sld->getSite()->getMaxTransferTimeSeconds();
-  int maxtime = tm->getMaxTransferTimeSeconds();
-  if (maxsls >= 0) {
-    maxtime = maxsls;
+  int global = tm->getMaxTransferTimeSeconds();
+  int effs = maxsls >= 0 ? maxsls : global;
+  int effd = maxsld >= 0 ? maxsld : global;
+  if (effs == 0) {
+    maxtransfertimeseconds = effd;
   }
-  if (maxsld > 0 && (maxsls == 0 || maxsld < maxsls)) {
-    maxtime = maxsld;
+  else if (effd == 0) {
+    maxtransfertimeseconds = effs;
   }
-  maxtransfertimeseconds = maxtime;
+  else {
+    maxtransfertimeseconds = std::min(effs, effd);
+  }
 }
 
 void TransferMonitor::engageDownload(
@@ -195,6 +199,10 @@ void TransferMonitor::engageDownload(
       sls->getSite()->getName(), "(local)", co ? co->getName() : "", dfile, fls, spath,
       nullptr, dpath, fls->getFile(sfile)->getSize(), 0, src, -1, ssl, clientactive);
   tm->addNewTransferStatus(ts);
+  if (localfl && !Path::isSafeFilename(dfile)) {
+    lateDownloadFailure("Refusing unsafe filename from server: " + dfile);
+    return;
+  }
   if (localfl) {
     localfl->touchFile(dfile, true);
     if (!FileSystem::directoryExists(dpath)) {
@@ -705,7 +713,7 @@ void TransferMonitor::updateFXPSizeSpeed(bool interpolate) {
   File * dstfile = fld->getFile(dfile);
   if (dstfile) {
     unsigned long long int dstfilesize = dstfile->getSize();
-    int span = timestamp - startstamp;
+    int span = util::getEpochNowMillis() - startstamp;
     int dsttouch = dstfile->getTouch();
     if (span <= 0) {
       span = 10;
@@ -729,7 +737,7 @@ void TransferMonitor::updateFXPSizeSpeed(bool interpolate) {
 void TransferMonitor::updateLocalTransferSizeSpeed() {
   if (lt) {
     unsigned long long int filesize = lt->size();
-    int span = timestamp - startstamp;
+    int span = util::getEpochNowMillis() - startstamp;
     if (span <= 0) {
       span = 10;
     }
@@ -766,7 +774,9 @@ bool TransferMonitor::checkForDeadFXPTransfers() {
 }
 
 bool TransferMonitor::checkMaxTransferTime() {
-  if (maxtransfertimeseconds > 0 && (int)(timestamp - startstamp) / 1000 > maxtransfertimeseconds) {
+  unsigned long long int now = util::getEpochNowMillis();
+  if (maxtransfertimeseconds > 0 && now >= startstamp &&
+      static_cast<int>((now - startstamp) / 1000) > maxtransfertimeseconds) {
     if (status == TM_STATUS_TRANSFERRING || status == TM_STATUS_AWAITING_ACTIVE || status == TM_STATUS_AWAITING_PASSIVE) {
       if (!!ts) {
         ts->addLogLine("[" + global->getTimeReference()->getCurrentLogTimeStamp() + "] [Timeout reached after " + std::to_string(maxtransfertimeseconds) + " seconds. Disconnecting]");

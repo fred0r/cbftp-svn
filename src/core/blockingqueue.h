@@ -40,10 +40,11 @@ public:
   typename std::list<T>::iterator end() {
     return queue.end();
   }
-  void erase(typename std::list<T>::iterator it) {
-    queue.erase(it);
+  typename std::list<T>::iterator erase(typename std::list<T>::iterator it) {
+    typename std::list<T>::iterator next = queue.erase(it);
     --queuesize;
     content.wait();
+    return next;
   }
 private:
   std::list<T> queue;

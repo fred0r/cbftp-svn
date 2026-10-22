@@ -5,6 +5,7 @@
 #include <cstring>
 #include <cctype>
 #include <cerrno>
+#include <vector>
 #include <openssl/crypto.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -24,25 +25,53 @@
 #include "util.h"
 
 #define FTPCONN_TICK_INTERVAL 1000
+#define MAX_DATABUF_SIZE (64 * 1024 * 1024)
 
 const char * xdupematch = "X-DUPE: ";
 const char * dupematch1 = "uploaded by";
 const char * dupematch2 = "ile exists";
 const size_t xdupematchlen = strlen(xdupematch);
 
-void fromPASVString(std::string pasv, std::string & host, int & port) {
-  size_t sep1 = pasv.find(",");
-  size_t sep2 = pasv.find(",", sep1 + 1);
-  size_t sep3 = pasv.find(",", sep2 + 1);
-  size_t sep4 = pasv.find(",", sep3 + 1);
-  size_t sep5 = pasv.find(",", sep4 + 1);
-  pasv[sep1] = '.';
-  pasv[sep2] = '.';
-  pasv[sep3] = '.';
-  host = pasv.substr(0, sep4);
-  int major = std::stoi(pasv.substr(sep4 + 1, sep5 - sep4 + 1));
-  int minor = std::stoi(pasv.substr(sep5 + 1));
-  port = major * 256 + minor;
+bool fromPASVString(const std::string & pasv, std::string & host, int & port) {
+  std::vector<std::string> fields;
+  size_t start = 0;
+  while (true) {
+    size_t comma = pasv.find(",", start);
+    if (comma == std::string::npos) {
+      fields.push_back(pasv.substr(start));
+      break;
+    }
+    fields.push_back(pasv.substr(start, comma - start));
+    start = comma + 1;
+  }
+  if (fields.size() != 6) {
+    return false;
+  }
+  int nums[6];
+  for (int i = 0; i < 6; i++) {
+    const std::string& field = fields[i];
+    if (field.empty() || field.length() > 3) {
+      return false;
+    }
+    for (size_t j = 0; j < field.length(); j++) {
+      if (!isdigit(static_cast<unsigned char>(field[j]))) {
+        return false;
+      }
+    }
+    try {
+      nums[i] = std::stoi(field);
+    }
+    catch (std::exception& e) {
+      return false;
+    }
+    if (nums[i] < 0 || nums[i] > 255) {
+      return false;
+    }
+  }
+  host = std::to_string(nums[0]) + "." + std::to_string(nums[1]) + "." +
+      std::to_string(nums[2]) + "." + std::to_string(nums[3]);
+  port = nums[4] * 256 + nums[5];
+  return true;
 }
 
 std::string toPASVString(const std::string & addr, int port) {
@@ -318,7 +347,9 @@ void FTPConn::handleTLSFingerprint(const std::string& fingerprint) {
           rawBufWriteLine("[TLS hostname mismatch: certificate does not match " + hostname + "]");
         }
         global->getEventLog()->log("FTPConn", site->getName() + " " + std::to_string(id) +
-            ": TLS hostname mismatch: " + hostname, Core::LogLevel::WARNING);
+            ": TLS hostname mismatch: " + hostname, Core::LogLevel::ERROR);
+        disconnect();
+        return;
       }
       if (!iom->checkTLSCertTrust(sockid)) {
         if (rawbuf) rawBufWriteLine("[TLS certificate chain not trusted - disconnecting]");
@@ -340,23 +371,35 @@ void FTPConn::printLocalError(const std::string& info) {
 }
 
 bool FTPConn::parseData(char * data, unsigned int datalen, char ** databuf, unsigned int & databuflen, unsigned int & databufpos, int & databufcode) {
-  if (databufpos + datalen > databuflen) {
-    while (databufpos + datalen > databuflen) {
-      databuflen *= 2;
+  size_t needed = static_cast<size_t>(databufpos) + datalen;
+  if (needed > databuflen) {
+    size_t newlen = databuflen ? databuflen : 1;
+    while (newlen < needed) {
+      newlen *= 2;
     }
-    char * newdatabuf = (char *) malloc(databuflen);
-    memcpy(newdatabuf, *databuf, databufpos);
+    if (newlen > MAX_DATABUF_SIZE) {
+      return false;
+    }
+    char * newdatabuf = (char *) malloc(newlen);
+    if (!newdatabuf) {
+      return false;
+    }
+    if (databufpos) {
+      memcpy(newdatabuf, *databuf, databufpos);
+    }
     free(*databuf);
     *databuf = newdatabuf;
+    databuflen = static_cast<unsigned int>(newlen);
   }
   memcpy(*databuf + databufpos, data, datalen);
   databufpos += datalen;
   bool messagecomplete = false;
   char * loc = 0;
-  if((*databuf)[databufpos - 1] == '\n') {
+  if (databufpos >= 5 && (*databuf)[databufpos - 1] == '\n') {
     loc = *databuf + databufpos - 5;
     while (loc >= *databuf) {
-      if (isdigit(*loc) && isdigit(*(loc+1)) && isdigit(*(loc+2))) {
+      if (loc + 3 < *databuf + databufpos &&
+          isdigit(*loc) && isdigit(*(loc+1)) && isdigit(*(loc+2))) {
         if ((*(loc+3) == ' ' || *(loc+3) == '\n') && (loc == *databuf || *(loc-1) == '\n')) {
           messagecomplete = true;
           databufcode = atoi(std::string(loc, 3).data());
@@ -369,7 +412,8 @@ bool FTPConn::parseData(char * data, unsigned int datalen, char ** databuf, unsi
   if (messagecomplete) {
     if (databufcode == 550) {
       // workaround for a glftpd bug causing an extra row '550 Unable to load your own user file!.' on retr/stor
-      if (*(loc+4) == 'U' && *(loc+5) == 'n' && *(loc+28) == 'u' && *(loc+33) == 'f') {
+      if (loc + 33 < *databuf + databufpos &&
+          *(loc+4) == 'U' && *(loc+5) == 'n' && *(loc+28) == 'u' && *(loc+33) == 'f') {
         databufpos = 0;
         return false;
       }
@@ -617,10 +661,19 @@ void FTPConn::tick(int message) {
 }
 
 void FTPConn::sendEcho(const std::string & data) {
-  rawBufWriteLine(data);
+  std::string command;
+  command.reserve(data.size());
+  for (size_t i = 0; i < data.size(); i++) {
+    char c = data[i];
+    if (c == '\r' || c == '\n' || c == '\0') {
+      continue;
+    }
+    command += c;
+  }
+  rawBufWriteLine(command);
   processing = true;
-  status = data;
-  iom->sendData(sockid, data + "\r\n");
+  status = command;
+  iom->sendData(sockid, command + "\r\n");
 }
 
 void FTPConn::AUTHTLSResponse() {
@@ -899,11 +952,13 @@ void FTPConn::PWDResponse() {
   processing = false;
   if (databufcode == 257) {
     std::string line(databuf, databufpos);
-    int loc = 0;
-    while(line[++loc] != '"');
-    int start = loc + 1;
-    while(line[++loc] != '"');
-    sl->gotPath(id, line.substr(start, loc - start));
+    size_t first = line.find('"');
+    size_t second = first == std::string::npos ? std::string::npos : line.find('"', first + 1);
+    if (first == std::string::npos || second == std::string::npos) {
+      sl->commandFail(id);
+      return;
+    }
+    sl->gotPath(id, line.substr(first + 1, second - first - 1));
   }
   else {
     sl->commandFail(id);
@@ -1125,9 +1180,13 @@ void FTPConn::PASVResponse() {
   processing = false;
   if (databufcode == 227) {
     std::string data = std::string(databuf, databufpos);
-    size_t start = data.find('(') + 1;
-    size_t end = data.find(')');
-    std::string addr = data.substr(start, end - start);
+    size_t openparen = data.find('(');
+    size_t closeparen = data.find(')');
+    if (openparen == std::string::npos || closeparen == std::string::npos || closeparen <= openparen + 1) {
+      sl->commandFail(id);
+      return;
+    }
+    std::string addr = data.substr(openparen + 1, closeparen - openparen - 1);
     int count = 0;
     for (unsigned int i = 0; i < addr.length(); i++) {
       if (addr[i] == ',') count++;
@@ -1141,7 +1200,10 @@ void FTPConn::PASVResponse() {
     }
     std::string host;
     int port;
-    fromPASVString(addr, host, port);
+    if (!fromPASVString(addr, host, port)) {
+      sl->commandFail(id);
+      return;
+    }
     sl->gotPassiveAddress(id, host, port);
   }
   else {
@@ -1628,9 +1690,19 @@ void FTPConn::parseXDUPEData() {
     if (xdupeend == -1) {
       xdupeend = databufpos - 2;
     }
-    memmove(databuf + xdupestart + 24, databuf + xdupeend, databufpos - xdupeend);
-    memcpy(databuf + xdupestart, "[XDUPE data retrieved]\r\n", 24);
-    databufpos -= xdupeend - xdupestart - 24;
+    if (xdupeend >= xdupestart && xdupeend <= static_cast<int>(databufpos)) {
+      int blocklen = xdupeend - xdupestart;
+      size_t taillen = databufpos - xdupeend;
+      if (blocklen >= 24) {
+        memmove(databuf + xdupestart + 24, databuf + xdupeend, taillen);
+        memcpy(databuf + xdupestart, "[XDUPE data retrieved]\r\n", 24);
+        databufpos = static_cast<unsigned int>(xdupestart + 24) + taillen;
+      }
+      else {
+        memmove(databuf + xdupestart, databuf + xdupeend, taillen);
+        databufpos = static_cast<unsigned int>(xdupestart) + taillen;
+      }
+    }
   }
 
 }

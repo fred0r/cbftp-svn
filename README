@@ -130,15 +130,23 @@ as "Queue: N"). The queue screen shows all queued items from every site in a
 single list. Queued files sharing the same source and destination (site, path
 and section) are batched into a single transfer job, so one login is used per
 source and the site's configured upload/download slots are shared across the
-whole batch.
+whole batch. Queued directories are not batched - each directory is started
+as its own transfer job.
 
 In the queue screen you can:
 - Press PageUp/PageDown to scroll through the list
 - Press Enter to view transfer details of the selected file
-- Press t to start the batch of the selected item
-- Press T to start all batches; transfers are started per source+destination
-  site pair, so a second batch for the same site pair waits until the former
-  transfer completes, while different site pairs run concurrently
+- Press t to start only the selected item
+- Press T to start the whole queue; queued files sharing the same source and
+  destination (site, path and section) are batched into a single transfer job,
+  while each queued directory is started as its own job. Starting is limited
+  by each site's SITE OPTIONS slot configuration (login slots, upload/download
+  slots, and download slots on transfer jobs); a batch for a site that has no
+  free slot waits until capacity becomes available. T keeps running until the
+  whole queue has been transferred - it continues across closing and reopening
+  the queue screen, and also starts entries that are added afterwards. Failed
+  or aborted entries are retried automatically up to two times (three attempts
+  in total); pressing T again resets that retry budget.
 - Press s to stop the selected transfer after the current release
 - Press S to stop the selected transfer after the current file
 - Press + to move the selected item up in the queue
@@ -151,7 +159,8 @@ In the queue screen you can:
 The status column shows the phase of each queued file: wait (not started),
 lgn (connecting/logging in), up/dn/fxp with a percentage (transferring),
 done, fail or abor. Items stay in the queue until their TransferJob reaches
-DONE status, then are removed.
+DONE status, then are removed. Failed or aborted items remain in the queue
+(and are retried by T until the attempt limit is reached).
 
 The queue is memory-only and will be lost when cbftp exits.
 
@@ -374,21 +383,27 @@ Field summary:
 - Password: The password for your user on the site. If you do not have a user,
   'anonymous' should be entered.
 - Login slots: The number of simultaneous slots that the site allows you to
-  log in with.
+  log in with. Select "Many" for unlimited.
 - Upload slots: The number of simultaneous uploads that the site allows you
-  to perform. Enter 0 for unlimited, or same as the number of logins.
+  to perform. Select "All" for unlimited (all login slots), or a specific
+  number (0 means no uploads).
 - Download slots: The number of simultaneous downloads that the site allows
-  you to perform. Enter 0 for unlimited, or same as the number of logins.
+  you to perform. Select "All" for unlimited (all login slots), or a specific
+  number (0 means no downloads).
 - Advanced slot configuration contains the following additional options:
+  - Login slots, Upload slots, Download slots: as above ("Many"/"All" for
+    unlimited).
   - Leave one slot free: Useful if you want to be able to list dirs or issue
     commands on the site with immediate response even while jobs are running.
-  - Download slots on pre: On jobs that match the affil list, apply this
-    amount of download slots instead.
-  - Download slots on complete spread job: For a spread job that has completed
-    on this site, apply this amount of download slots instead.
+  - Download slots on download-only spread jobs: On download-only spread jobs
+    that match the affil list, apply this amount of download slots instead
+    ("Normal" uses the regular download slot count).
+  - Download slots on complete spread jobs: For a spread job that has
+    completed on this site, apply this amount of download slots instead
+    ("Normal" uses the regular download slot count).
   - Download slots on transfer jobs: The number of download slots available
     for transfer jobs, and also the default number of slots to use when
-    starting them.
+    starting them ("Normal" uses the regular download slot count).
 - TLS Transfers: The security behavior for transfers to/from this site.
 - TLS fingerprint: verification - Enable/disable TLS certificate fingerprint
   verification. When enabled, the first connection's fingerprint is saved and
@@ -400,27 +415,28 @@ Field summary:
 - TLS fingerprint: <value> - The current stored SHA-256 fingerprint of the
   site's TLS certificate (read-only). Set automatically on first connection.
 - TLS certificate: require valid CA - When enabled, cbftp validates the
-  certificate chain against the system CA trust store (e.g. Let's Encrypt).
-  Blocks connection if the cert is not trusted. Disabled by default since
-  most FTP servers use self-signed certificates.
+  certificate chain against the system CA trust store (e.g. Let's Encrypt)
+  and that the certificate's hostname matches the site address. Blocks the
+  connection if the cert is not trusted or the hostname does not match.
+  Disabled by default since most FTP servers use self-signed certificates.
 - TLS certificate: warn before expiry (days) - Days before expiry to start
   warning. Set to -1 to use the global default (configured in G), or 0 to
   disable expiry warnings entirely. Default: use global (14 days).
 
 SSL CAVEATS
 
-cbftp now performs three additional TLS certificate checks after fingerprint
-verification:
+When a site has "TLS certificate: require valid CA" enabled, cbftp performs
+two additional checks after fingerprint verification and blocks (disconnects)
+the connection if either fails:
 - Hostname verification: Checks if the certificate's CN/SAN matches the
-  configured site address. Logs a warning on mismatch. Supports both domain
+  configured site address. Disconnects on mismatch. Supports both domain
   names and IP addresses (IP SAN certs, e.g. Let's Encrypt).
-- Expiry check: Warns if the certificate has expired or is about to expire
-  (within the configured warning period, default 14 days).
-- Chain trust: When enabled per-site, validates the certificate chain
-  against the system CA store and blocks untrusted connections.
+- Chain trust: Validates the certificate chain against the system CA store
+  and blocks untrusted connections.
 
-These checks are non-blocking by default (warnings only), except for chain
-trust which requires opting in per-site.
+Independent of that setting, an expiry check warns if the certificate has
+expired or is about to expire (within the configured warning period, default
+14 days), and prompts the user to accept an expired certificate.
 - Transfer protocol: Preferred/supported protocol IPv4/IPv6
 - Stay logged in: Don't log out from sites automatically. Enable
   anti-anti-idle with the configured max idle time as period.
@@ -482,6 +498,12 @@ trust which requires opting in per-site.
   the same name on different sites and then using that section in a spread job
   will result in the job operating in the specified section directory for
   each site.
+- Max spread job runtime: The maximum runtime for a spread job involving this
+  site, after which it is aborted. "Default" uses the global setting, and
+  "Unlimited" disables the limit.
+- Max transfer runtime: The maximum runtime for a single transfer to/from this
+  site, after which it is aborted. "Default" uses the global setting, and
+  "Unlimited" disables the limit.
 
 GLOBAL OPTIONS
 
@@ -490,7 +512,7 @@ When you are done editing, press 'd' to save changes.
 
 Field summary:
 
-- Default network interface - The network interface that cbftp will bind to
+- Bind to network interface - The network interface that cbftp will bind to
   by default. Useful if you have multiple usable network interfaces, otherwise
   you can ignore this setting.
 - Local transfer protocol - Preferred/supported protocol IPv4/IPv6 for local
@@ -508,23 +530,66 @@ Field summary:
 - Enable HTTPS/JSON API - Whether or not to listen on TCP for remote commands.
 - HTTPS/JSON API Port: the TCP port to listen for remote commands on.
 - Enable UDP API - Whether or not to listen on UDP for remote commands.
-- UDP API port - the UDP port to listen for remote commands on.
+- UDP API Port - the UDP port to listen for remote commands on.
 - API password - the password that should be provided in remote commands for
-  cbftp to accept them.
+  cbftp to accept them. The API refuses to start listening until a password
+  is set.
+- API listening mode - Whether the API should listen on localhost only or on
+  all interfaces.
 - Remote command bell - Trigger the terminal bell when remote commands that
   require user action arrive.
 - Prepared spread job expiration time - The time that a prepared spread job
   will remain available on the main screen before it disappears.
 - Next prepared spread job starter timeout - The duration that the next
   prepared spread job starter (N) will stay active if no spread job appears.
+- Max spread job runtime - The default maximum runtime for spread jobs, after
+  which they are aborted. "Unlimited" disables the limit. Can be overridden
+  per site.
+- Max transfer runtime - The default maximum runtime for a single transfer,
+  after which it is aborted. "Unlimited" disables the limit. Can be overridden
+  per site.
 - Spread job history: The maximum number of spread jobs to keep in history.
 - Transfer job history: The maximum number of transfer jobs to keep in history.
 - Transfer history: The maximum number of transfers to keep in history.
 - Log buffer history: The maximum number of log lines to keep in log buffers.
+- Time stamp granularity - Whether log/time stamps are shown with seconds or
+  milliseconds precision.
 - Legend bar - the mode of operation for the legend bar.
-- Default site *** - default values when creating a new site.
-- Download path - the default download path that cbftp should use for
+- Highlight entire lines - Whether the entire line of the selected item is
+  highlighted in tables/lists.
+- Show freetext on mainscreen - Whether the site freetext field is shown on
+  the main screen.
+- Max spread jobs on mainscreen - The maximum number of spread jobs to show on
+  the main screen.
+- Max spread job age on main screen - The maximum age of spread jobs shown on
+  the main screen.
+- Max transfer jobs on mainscreen - The maximum number of transfer jobs to
+  show on the main screen.
+- Max transfer job age on main screen - The maximum age of transfer jobs shown
+  on the main screen.
+- Default site username / password - default credentials when creating a new
+  site.
+- Default site login slots / upload slots / download slots - default slot
+  counts when creating a new site ("Many"/"All" for unlimited).
+- Default TLS mode - the default TLS mode for new sites.
+- Default TLS transfers - the default TLS transfer policy for new sites.
+- Default TLS fingerprint verification - default fingerprint verification
+  setting for new sites.
+- Default TLS fingerprint: auto-accept on change - default setting for new
+  sites.
+- Default TLS certificate: require valid CA - default setting for new sites.
+- Default TLS cert expiry warning (days) - default number of days before
+  certificate expiry to start warning.
+- Default TLS certificate: allow expired - default setting for new sites.
+- TLS key algorithm - The key algorithm used for cbftp's self-signed
+  certificate (EC prime256v1, or the post-quantum SLH-DSA-SHA2-128s / ML-DSA-44
+  where supported by the OpenSSL version).
+- Default site max idle time (s) - default idle time in seconds for new sites.
+- Local download path - the default download path that cbftp should use for
   download jobs.
+- Max local download slots - the maximum number of simultaneous local
+  downloads.
+- Max local upload slots - the maximum number of simultaneous local uploads.
 - Configure skiplist - enters a new screen that lets you configure the global
   skiplist.
 - Configure proxy settings - add or remove proxies that can be used by sites.

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+#include <functional>
 #include <list>
 #include <memory>
 #include <mutex>
@@ -65,6 +67,11 @@ public:
 
     /* Flush an EventReceiver from the work queues. */
     void flushEventReceiver(EventReceiver* er);
+
+    /* Register a callback invoked when an EventReceiver is destroyed, after
+     * its queued events have been flushed. Used by IOManager to drop socket
+     * registrations that would otherwise point at freed receivers. */
+    void setEventReceiverDestroyedCallback(std::function<void(EventReceiver*)> cb);
 
     DataBlockPool& getBlockPool();
 
@@ -141,8 +148,9 @@ private:
   Semaphore flush;
   DataBlockPool blockpool;
   bool running;
-  bool overloaded;
-  bool lowpriooverloaded;
+  std::atomic<bool> overloaded;
+  std::atomic<bool> lowpriooverloaded;
+  std::function<void(EventReceiver*)> receiverdestroyedcb;
   std::vector<BlockingQueue<Event>*> eventqueues;
 };
 

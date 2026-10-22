@@ -44,6 +44,7 @@ struct QueuedItem {
   bool isDirectory = false;
   unsigned int id = 0;
   unsigned int transferJobId = 0;
+  unsigned int retries = 0;
   unsigned int getId() const { return id; }
 
   std::string getDirectionLabel() const {
@@ -163,6 +164,9 @@ public:
   bool isInQueue(const QueuedItem& item) const;
   JobStartResult startQueuedItem(const std::shared_ptr<QueuedItem>& item);
   JobStartResult startQueueBatch(const std::shared_ptr<QueuedItem>& item);
+  bool queueBatchCanStart(const std::shared_ptr<QueuedItem>& item) const;
+  void resetQueueBatchJobIds(const std::shared_ptr<QueuedItem>& item);
+  void resetQueueRetries();
   unsigned int countStartedQueueItems() const;
   void removeFromQueue(unsigned int id);
   void clearQueue();
@@ -179,6 +183,7 @@ public:
   int getMaxSpreadJobTimeSeconds() const;
   void setMaxSpreadJobTimeSeconds(int seconds);
  private:
+  unsigned int countActiveQueueBatches(const std::string& site, bool source, bool dest) const;
   JobStartResult newSpreadJob(int profile, const std::string& release, const std::string& section, const std::list<std::string>& sites, bool reset, const std::list<std::string>& dlonlysites);
   void estimateRaceSizes();
   void estimateRaceSize(const std::shared_ptr<Race>&, bool forceupdate = false);

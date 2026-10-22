@@ -9,12 +9,23 @@
 #include "logmanager.h"
 #include "timereference.h"
 
+namespace {
+
+unsigned int clampMaxRawbufLines(int value) {
+  if (value < 1) {
+    return 1;
+  }
+  return static_cast<unsigned int>(value);
+}
+
+}
+
 RawBuffer::RawBuffer(const std::string& site, const std::string& id) :
   latestp(0),
   latestpfiltered(0),
   latestpcopy(0),
   latestpcopyfiltered(0),
-  maxlength(global->getLogManager()->getMaxRawbufLines()),
+  maxlength(clampMaxRawbufLines(global->getLogManager()->getMaxRawbufLines())),
   bookmarklines(0),
   site(site),
   id(id),
@@ -33,7 +44,7 @@ RawBuffer::RawBuffer(const std::string& site) :
   latestpfiltered(0),
   latestpcopy(0),
   latestpcopyfiltered(0),
-  maxlength(global->getLogManager()->getMaxRawbufLines()),
+  maxlength(clampMaxRawbufLines(global->getLogManager()->getMaxRawbufLines())),
   bookmarklines(0),
   site(site),
   inprogress(false),
@@ -81,6 +92,9 @@ unsigned int RawBuffer::linesSinceBookmark() const {
 
 void RawBuffer::lineFinished() {
   inprogress = false;
+  if (log.empty()) {
+    return;
+  }
   addFilterLine(getLine(0), logfiltered, latestpfiltered);
   if (callback != nullptr) {
     callback->newRawBufferLine(getLine(0));

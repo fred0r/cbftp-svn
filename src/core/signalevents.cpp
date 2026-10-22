@@ -49,14 +49,17 @@ SignalData SignalEvents::getClearFirst() {
   return ret;
 }
 
-void SignalEvents::flushEventReceiver(EventReceiver* er) {
+int SignalEvents::flushEventReceiver(EventReceiver* er) {
   std::lock_guard<std::recursive_mutex> lock(signallock);
+  int flushed = 0;
   for (size_t i = 0; i < slots.size(); ++i) {
     if (slots[i].set && slots[i].er == er) {
       slots[i].set = false;
       hasevent--;
+      ++flushed;
     }
   }
+  return flushed;
 }
 
 }

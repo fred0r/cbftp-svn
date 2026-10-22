@@ -56,28 +56,41 @@ struct ParsedAddress {
   size_t size;
 };
 
-ParsedAddress parseAddress(char* data) {
+ParsedAddress parseAddress(char* data, size_t availlen) {
   ParsedAddress out;
+  out.size = 0;
+  if (availlen < 1) {
+    return out;
+  }
   if (data[0] == PROXYSESSION_ADDR_IPV4) {
+    if (availlen < 7) {
+      return out;
+    }
     out.size = 7;
     out.addr.port = ntohs(*reinterpret_cast<unsigned short*>(data + 5));
     char buf[INET_ADDRSTRLEN];
     out.addr.host = inet_ntop(AF_INET, data + 1, buf, INET_ADDRSTRLEN);
   }
   else if (data[0] == PROXYSESSION_ADDR_DNS) {
-    size_t len = data[1];
+    if (availlen < 2) {
+      return out;
+    }
+    size_t len = static_cast<unsigned char>(data[1]);
+    if (availlen < len + 4) {
+      return out;
+    }
     out.addr.host = std::string(data + 2, len);
     out.addr.port = ntohs(*reinterpret_cast<unsigned short*>(data + 2 + len));
     out.size = len + 3;
   }
   else if (data[0] == PROXYSESSION_ADDR_IPV6) {
+    if (availlen < 19) {
+      return out;
+    }
     out.size = 19;
     out.addr.port = ntohs(*reinterpret_cast<unsigned short*>(data + 17));
     char buf[INET6_ADDRSTRLEN];
-    out.addr.host = inet_ntop(AF_INET, data + 1, buf, INET6_ADDRSTRLEN);
-  }
-  else {
-    out.size = 0;
+    out.addr.host = inet_ntop(AF_INET6, data + 1, buf, INET6_ADDRSTRLEN);
   }
   return out;
 }
@@ -85,6 +98,8 @@ ParsedAddress parseAddress(char* data) {
 }
 
 ProxySession::ProxySession() :
+  saddr(nullptr),
+  saddr6(nullptr),
   state(PROXYSESSION_INIT)
 {
 }
@@ -307,7 +322,12 @@ void ProxySession::received(char* data, int datalen) {
         errormessage = getConnectError(data[1]);
         break;
       }
-      ParsedAddress paddr = parseAddress(data + 3);
+      ParsedAddress paddr = parseAddress(data + 3, datalen > 3 ? static_cast<size_t>(datalen - 3) : 0);
+      if (paddr.size == 0) {
+        state = PROXYSESSION_ERROR;
+        errormessage = "Malformed address in response";
+        break;
+      }
       addrlistening = paddr.addr;
       state = PROXYSESSION_RECV_LISTEN;
       break;
@@ -330,7 +350,12 @@ void ProxySession::received(char* data, int datalen) {
         errormessage = getConnectError(data[1]);
         break;
       }
-      ParsedAddress paddr = parseAddress(data + 3);
+      ParsedAddress paddr = parseAddress(data + 3, datalen > 3 ? static_cast<size_t>(datalen - 3) : 0);
+      if (paddr.size == 0) {
+        state = PROXYSESSION_ERROR;
+        errormessage = "Malformed address in response";
+        break;
+      }
       addrreply = paddr.addr;
       state = PROXYSESSION_SUCCESS;
       break;
@@ -369,7 +394,13 @@ void ProxySession::setConnectRequestData() {
   else {
     senddata[3] = PROXYSESSION_ADDR_DNS;
     size_t len = addr.host.length();
-    senddata[4] = len;
+    if (len > 255 || len + 7 > sizeof(senddata)) {
+      state = PROXYSESSION_ERROR;
+      errormessage = "Hostname too long for SOCKS5 connect request";
+      senddatalen = 0;
+      return;
+    }
+    senddata[4] = static_cast<char>(len);
     unsigned short port = htons(addr.port);
     memcpy((void *) &senddata[5], addr.host.data(), len);
     memcpy((void *) &senddata[5 + len], &port, 2);
@@ -390,7 +421,7 @@ void ProxySession::setListenRequestData() {
   else if (addressmode == AddressMode::IPV6) {
     senddata[3] = PROXYSESSION_ADDR_IPV6;
     memcpy((void *) &senddata[4], &saddr6->sin6_addr.s6_addr, 16);
-    memcpy((void *) &senddata[20], &saddr->sin_port, 2);
+    memcpy((void *) &senddata[20], &saddr6->sin6_port, 2);
     senddatalen = 22;
   }
 }

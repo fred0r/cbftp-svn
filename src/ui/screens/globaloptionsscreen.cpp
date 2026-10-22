@@ -1,5 +1,7 @@
 #include "globaloptionsscreen.h"
 
+#include <stdexcept>
+
 #include "../../core/iomanager.h"
 #include "../../core/sslmanager.h"
 #include "../../globalcontext.h"
@@ -26,6 +28,17 @@
 #include "../misc.h"
 
 namespace {
+
+bool parseInt(const std::string& str, int& out) {
+  try {
+    size_t pos = 0;
+    out = std::stoi(str, &pos);
+    return pos == str.size();
+  }
+  catch (std::exception& e) {
+    return false;
+  }
+}
 
 enum class UdpEnable {
   NO,
@@ -403,10 +416,13 @@ bool GlobalOptionsScreen::keyPressed(unsigned int ch) {
           std::string portrange = std::static_pointer_cast<MenuSelectOptionTextField>(msoe)->getData();
           size_t splitpos = portrange.find(":");
           if (splitpos != std::string::npos) {
-            int portfirst = std::stoi(portrange.substr(0, splitpos));
-            int portlast = std::stoi(portrange.substr(splitpos + 1));
-            ls->setActivePortFirst(portfirst);
-            ls->setActivePortLast(portlast);
+            int portfirst;
+            int portlast;
+            if (parseInt(portrange.substr(0, splitpos), portfirst) &&
+                parseInt(portrange.substr(splitpos + 1), portlast)) {
+              ls->setActivePortFirst(portfirst);
+              ls->setActivePortLast(portlast);
+            }
           }
         }
         else if (identifier == "transferprotocol") {
@@ -428,7 +444,10 @@ bool GlobalOptionsScreen::keyPressed(unsigned int ch) {
           }
         }
         else if (identifier == "tcpport") {
-          global->getHTTPServer()->setPort(std::stoi(std::static_pointer_cast<MenuSelectOptionTextField>(msoe)->getData()));
+          int port;
+          if (parseInt(std::static_pointer_cast<MenuSelectOptionTextField>(msoe)->getData(), port)) {
+            global->getHTTPServer()->setPort(port);
+          }
         }
         else if (identifier == "udpenable") {
           udpenable = static_cast<UdpEnable>(std::static_pointer_cast<MenuSelectOptionTextArrow>(msoe)->getData());
@@ -450,7 +469,10 @@ bool GlobalOptionsScreen::keyPressed(unsigned int ch) {
           }
         }
         else if (identifier == "udpport") {
-          rch->setPort(std::stoi(std::static_pointer_cast<MenuSelectOptionTextField>(msoe)->getData()));
+          int port;
+          if (parseInt(std::static_pointer_cast<MenuSelectOptionTextField>(msoe)->getData(), port)) {
+            rch->setPort(port);
+          }
         }
         else if (identifier == "apipass") {
           rch->setPassword(std::static_pointer_cast<MenuSelectOptionTextField>(msoe)->getData());

@@ -1,5 +1,6 @@
 #include "engine.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdlib>
 #include <fstream>
@@ -420,11 +421,101 @@ JobStartResult Engine::startQueueBatch(const std::shared_ptr<QueuedItem>& item) 
 unsigned int Engine::countStartedQueueItems() const {
   unsigned int count = 0;
   for (auto it = transferqueue.begin(); it != transferqueue.end(); ++it) {
-    if ((*it)->transferJobId) {
+    std::shared_ptr<QueuedItem> qi = *it;
+    if (!qi->transferJobId) {
+      continue;
+    }
+    std::shared_ptr<TransferJob> tj = getTransferJob(qi->transferJobId);
+    if (tj && !tj->isDone()) {
       ++count;
     }
   }
   return count;
+}
+
+bool Engine::queueBatchCanStart(const std::shared_ptr<QueuedItem>& item) const {
+  if (!item) {
+    return false;
+  }
+  auto check = [this](const std::string& name, bool source) -> bool {
+    std::shared_ptr<SiteLogic> sl = global->getSiteLogicManager()->getSiteLogic(name);
+    if (!sl) {
+      return false;
+    }
+    const std::shared_ptr<Site>& site = sl->getSite();
+    unsigned int logins = site->getMaxLogins();
+    unsigned int budget = source
+        ? std::min({logins, site->getMaxDown(), site->getMaxDownTransferJob()})
+        : std::min(logins, site->getMaxUp());
+    if (budget == 0 || logins == 0) {
+      return false;
+    }
+    if (countActiveQueueBatches(name, source, !source) >= budget) {
+      return false;
+    }
+    if (countActiveQueueBatches(name, true, true) >= logins) {
+      return false;
+    }
+    return true;
+  };
+  switch (item->direction) {
+    case QueuedItem::Direction::DOWNLOAD:
+      return check(item->srcSite, true);
+    case QueuedItem::Direction::UPLOAD:
+      return check(item->dstSite, false);
+    case QueuedItem::Direction::FXP:
+      return check(item->srcSite, true) && check(item->dstSite, false);
+  }
+  return false;
+}
+
+unsigned int Engine::countActiveQueueBatches(const std::string& site, bool source, bool dest) const {
+  std::unordered_set<unsigned int> jobs;
+  for (auto it = transferqueue.begin(); it != transferqueue.end(); ++it) {
+    std::shared_ptr<QueuedItem> qi = *it;
+    if (!qi->transferJobId) {
+      continue;
+    }
+    bool match =
+        (source && (qi->direction == QueuedItem::Direction::DOWNLOAD ||
+                    qi->direction == QueuedItem::Direction::FXP) && qi->srcSite == site) ||
+        (dest && (qi->direction == QueuedItem::Direction::UPLOAD ||
+                  qi->direction == QueuedItem::Direction::FXP) && qi->dstSite == site);
+    if (!match) {
+      continue;
+    }
+    std::shared_ptr<TransferJob> tj = getTransferJob(qi->transferJobId);
+    if (tj && !tj->isDone()) {
+      jobs.insert(qi->transferJobId);
+    }
+  }
+  return static_cast<unsigned int>(jobs.size());
+}
+
+void Engine::resetQueueBatchJobIds(const std::shared_ptr<QueuedItem>& item) {
+  if (!item) {
+    return;
+  }
+  std::string routekey = item->getRouteKey();
+  for (auto it = transferqueue.begin(); it != transferqueue.end(); ++it) {
+    std::shared_ptr<QueuedItem> qi = *it;
+    if (qi->getRouteKey() != routekey) {
+      continue;
+    }
+    if (qi->transferJobId) {
+      std::shared_ptr<TransferJob> tj = getTransferJob(qi->transferJobId);
+      if (tj && !tj->isDone()) {
+        continue;
+      }
+    }
+    qi->transferJobId = 0;
+  }
+}
+
+void Engine::resetQueueRetries() {
+  for (auto it = transferqueue.begin(); it != transferqueue.end(); ++it) {
+    (*it)->retries = 0;
+  }
 }
 
 JobStartResult Engine::newSpreadJob(int profile, const std::string& release, const std::string& section, const std::list<std::string>& sites, bool reset, const std::list<std::string>& dlonlysites) {

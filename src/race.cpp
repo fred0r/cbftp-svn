@@ -99,6 +99,11 @@ Race::Race(unsigned int id, SpreadProfile profile, const std::string& release, c
 }
 
 Race::~Race() {
+  for (auto& ts : registeredtransfers) {
+    if (ts && ts->getCallback() == this) {
+      ts->setCallback(nullptr);
+    }
+  }
   if (!isDone()) {
     setDone();
   }
@@ -663,6 +668,7 @@ const SkipList & Race::getSectionSkipList() const {
 void Race::addTransfer(const std::shared_ptr<TransferStatus>& ts) {
   if (!!ts) {
     ts->setCallback(this);
+    registeredtransfers.push_back(ts);
   }
 }
 
@@ -674,10 +680,12 @@ bool Race::clearTransferAttempts(bool clearstate) {
 }
 
 void Race::transferSuccessful(const std::shared_ptr<TransferStatus>& ts) {
+  registeredtransfers.remove(ts);
   addTransferAttempt(ts);
 }
 
 void Race::transferFailed(const std::shared_ptr<TransferStatus>& ts, int) {
+  registeredtransfers.remove(ts);
   addTransferAttempt(ts);
 }
 

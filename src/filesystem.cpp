@@ -109,7 +109,14 @@ util::Result writeFile(const Path& path, const Core::BinaryData& data) {
   if (!outfile) {
     return util::Result(false, Core::util::getStrError(errno));
   }
-  outfile.write((const char *)&data[0], data.size());
+  if (chmod(path.toString().c_str(), S_IRUSR | S_IWUSR) != 0) {
+    std::string error = Core::util::getStrError(errno);
+    outfile.close();
+    return util::Result(false, error);
+  }
+  if (!data.empty()) {
+    outfile.write((const char *)&data[0], data.size());
+  }
   if (!outfile) {
     std::string error = Core::util::getStrError(errno);
     outfile.close();

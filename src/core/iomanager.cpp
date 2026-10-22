@@ -130,6 +130,9 @@ IOManager::IOManager(WorkManager& wm, TickPoke& tp)
   , sessionkeycounter(0)
 {
   workmanager.addReadyNotify(this);
+  workmanager.setEventReceiverDestroyedCallback([this](EventReceiver* er) {
+    unregisterReceiver(er);
+  });
 }
 
 IOManager::~IOManager() {
@@ -602,6 +605,9 @@ bool IOManager::sendData(int sockid, const char* data, unsigned int datalen) {
   SocketInfo& socketinfo = it->second;
   while (datalen > 0) {
     char* dataBlock = sendblockpool->getBlock();
+    if (!dataBlock) {
+      return false;
+    }
     int copysize = datalen < sendblocksize ? datalen : sendblocksize;
     memcpy(dataBlock, data, copysize);
     socketinfo.sendqueue.push_back(DataBlock(dataBlock, copysize));
@@ -662,6 +668,19 @@ void IOManager::closeSocketIntern(int sockid) {
   autopaused.erase(sockid);
   manuallypaused.erase(sockid);
   socketinfomap.erase(it);
+}
+
+void IOManager::unregisterReceiver(EventReceiver* er) {
+  std::lock_guard<std::mutex> lock(socketinfomaplock);
+  std::vector<int> toclose;
+  for (auto& it : socketinfomap) {
+    if (it.second.receiver == er) {
+      toclose.push_back(it.first);
+    }
+  }
+  for (int sockid : toclose) {
+    closeSocketIntern(sockid);
+  }
 }
 
 ResolverResult IOManager::resolveHost(int sockid, bool mayblock) {
@@ -951,6 +970,9 @@ void IOManager::handleTCPConnectingOut(SocketInfo& socketinfo) {
 
 void IOManager::handleTCPPlainIn(SocketInfo& socketinfo) {
   char* buf = blockpool.getBlock();
+  if (!buf) {
+    return;
+  }
   int brecv = read(socketinfo.fd, buf, blocksize);
   if (brecv == 0) {
     blockpool.returnBlock(buf);
@@ -1055,6 +1077,14 @@ void IOManager::handleTCPSSLNegotiationOut(SocketInfo& socketinfo) {
   }
   SSL* ssl = SSL_new(socketinfo.type == SocketType::TCP_SSL_NEG_CONNECT ? SSLManager::getClientSSLCTX()
                                                                         : SSLManager::getServerSSLCTX());
+  if (!ssl) {
+    if (!socketinfo.closing) {
+      workmanager.dispatchEventDisconnected(socketinfo.receiver, socketinfo.id, DisconnectType::ERROR,
+                                             "SSL_new failed", socketinfo.prio);
+    }
+    closeSocketIntern(socketinfo.id);
+    return;
+  }
   SSL_set_mode(ssl, SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
   socketinfo.ssl = ssl;
   SSL_set_fd(ssl, socketinfo.fd);
@@ -1119,6 +1149,9 @@ void IOManager::handleTCPSSLIn(SocketInfo& socketinfo) {
   bool pause = false;
   while (true) {
     char* buf = blockpool.getBlock();
+    if (!buf) {
+      break;
+    }
     int bufpos = 0;
     while (bufpos < blocksize) {
       ERR_clear_error();
@@ -1188,7 +1221,14 @@ void IOManager::handleTCPSSLOut(SocketInfo& socketinfo) {
 
 void IOManager::handleUDPIn(SocketInfo& socketinfo) {
   char* buf = blockpool.getBlock();
+  if (!buf) {
+    return;
+  }
   int brecv = recvfrom(socketinfo.fd, buf, blocksize, 0, nullptr, nullptr);
+  if (brecv <= 0) {
+    blockpool.returnBlock(buf);
+    return;
+  }
   workmanager.dispatchFDData(socketinfo.receiver, socketinfo.id, buf, brecv, socketinfo.prio);
 }
 

@@ -40,6 +40,7 @@ public:
   ~RecursiveCommandLogic();
   void initialize(RecursiveCommandType, const Path&, const std::string&);
   bool isActive() const;
+  void abort();
   int getAction(const Path &, Path &);
   void addFileList(const std::shared_ptr<FileList>& fl);
   void failedCwd();
