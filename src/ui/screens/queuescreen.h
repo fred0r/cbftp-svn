@@ -10,7 +10,7 @@
 #include "../menuselectoption.h"
 
 class Engine;
-class QueuedItem;
+struct QueuedItem;
 
 class QueueScreen : public UIWindow, protected Core::EventReceiver {
 public:
