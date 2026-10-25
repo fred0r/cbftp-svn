@@ -13,6 +13,7 @@ quiet:
 	@#
 
 $(LIB): $(OBJS) | quiet
+	rm -f $@
 	$(AR) rc $@ $^ && $(RANLIB) $@
 
 clean:

@@ -16,6 +16,7 @@ quiet:
 	@#
 
 $(LIB): $(SRC:%.cpp=%.o) $(SCREENS_SRC:%.cpp=%.o) | quiet
+	rm -f $@
 	$(AR) rcT $@ $^ && $(RANLIB) $@
 
 clean:

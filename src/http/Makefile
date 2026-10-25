@@ -11,6 +11,7 @@ quiet:
 	@#
 
 $(LIB): $(SRC:%.cpp=%.o) | quiet
+	rm -f $@
 	$(AR) rc $@ $^ && $(RANLIB) $@
 
 clean:
