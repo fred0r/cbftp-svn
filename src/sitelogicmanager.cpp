@@ -54,3 +54,13 @@ void SiteLogicManager::deleteSiteLogic(const std::string & name) {
     }
   }
 }
+
+void SiteLogicManager::resetTLSFingerprintCheck(const std::string & name) {
+  std::vector<std::shared_ptr<SiteLogic> >::iterator it;
+  for(it = sitelogics.begin(); it != sitelogics.end(); it++) {
+    if ((*it)->getSite()->getName().compare(name) == 0) {
+      (*it)->resetTLSFingerprintCheck();
+      return;
+    }
+  }
+}

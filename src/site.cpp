@@ -6,6 +6,7 @@
 #include "util.h"
 #include "globalcontext.h"
 #include "sectionmanager.h"
+#include "settingsloadersaver.h"
 
 namespace {
 
@@ -1132,4 +1133,5 @@ void Site::setTLSLastExpiryDays(int days) {
 
 void Site::updateTLSFingerprint(const std::string& newfp) {
   tlsfingerprint = newfp;
+  global->getSettingsLoaderSaver()->saveSettings();
 }

@@ -170,6 +170,7 @@ SiteLogic::SiteLogic(const std::string & sitename) :
   loggedin(0),
   requestidcounter(0),
   poke(false),
+  tlsfingerprintchecked(false),
   currtime(0),
   timesincelastrequestready(0),
   refreshgovernor(site),
@@ -210,6 +211,7 @@ void SiteLogic::disconnectAll(bool hard) {
   for (unsigned int i = 0; i < conns.size(); i++) {
     disconnectConn(i, hard);
   }
+  tlsfingerprintchecked = false;
 }
 
 std::shared_ptr<SiteRace> SiteLogic::addRace(const std::shared_ptr<Race>& enginerace, const std::string & section, const std::string & release, bool downloadonly) {
@@ -256,6 +258,18 @@ void SiteLogic::addTransferJob(std::shared_ptr<SiteTransferJob> & tj) {
 void SiteLogic::tick(int message) {
   unsigned long long int prevtime = currtime;
   currtime += TICK_INTERVAL;
+  if (tlsfingerprintchecked) {
+    bool anyconnected = false;
+    for (unsigned int i = 0; i < conns.size(); i++) {
+      if (conns[i]->isConnected()) {
+        anyconnected = true;
+        break;
+      }
+    }
+    if (!anyconnected) {
+      tlsfingerprintchecked = false;
+    }
+  }
   int activateslots = 0;
   for (std::list<DelayedCommand>::iterator it = delayedcommands.begin(); it != delayedcommands.end();) {
     DelayedCommand & delayedcommand = *it;
@@ -2070,6 +2084,7 @@ void SiteLogic::registerDownloadLock(int id, const std::shared_ptr<FileList>& fl
 }
 
 void SiteLogic::setNumConnections(unsigned int num) {
+  tlsfingerprintchecked = false;
   while (num < conns.size()) {
     bool success = false;
     for (unsigned int i = 0; i < conns.size(); i++) {
@@ -2714,6 +2729,18 @@ std::string SiteLogic::expandVariables(const std::string& text) const {
   return expanded;
 }
 
+bool SiteLogic::isTLSFingerprintChecked() const {
+  return tlsfingerprintchecked;
+}
+
+void SiteLogic::markTLSFingerprintChecked() {
+  tlsfingerprintchecked = true;
+}
+
+void SiteLogic::resetTLSFingerprintCheck() {
+  tlsfingerprintchecked = false;
+}
+
 void SiteLogic::fingerprintPrompt(int connid, const std::string& sitename, const std::string& oldfp, const std::string& newfp) {
   FingerprintDecision decision;
   decision.connid = connid;
@@ -2724,7 +2751,7 @@ void SiteLogic::fingerprintPrompt(int connid, const std::string& sitename, const
   decision.accept = false;
   decision.disable_verification = false;
   pending_fingerprints[connid] = decision;
-  global->getEventLog()->log("SiteLogic", site->getName() + " " + std::to_string(connid) + 
+  global->getEventLog()->log("SiteLogic", site->getName() +
       ": TLS fingerprint change detected, prompting user", Core::LogLevel::WARNING);
   
   if (fingerprint_prompt_callback) {
@@ -2733,7 +2760,7 @@ void SiteLogic::fingerprintPrompt(int connid, const std::string& sitename, const
 }
 
 void SiteLogic::fingerprintChangedError(int connid, const std::string& sitename, const std::string& oldfp, const std::string& newfp) {
-  global->getEventLog()->log("SiteLogic", site->getName() + " " + std::to_string(connid) + 
+  global->getEventLog()->log("SiteLogic", site->getName() +
       ": TLS fingerprint change error: " + oldfp + " -> " + newfp, Core::LogLevel::ERROR);
   pending_fingerprints[connid].connid = connid;
   pending_fingerprints[connid].sitename = sitename;

@@ -43,6 +43,35 @@ void addRuntimeOptions(std::shared_ptr<MenuSelectOptionTextArrow>& arrow) {
   arrow->addOption("Unlimited", 0);
 }
 
+bool normalizeFingerprint(const std::string& input, std::string& output) {
+  output = util::trim(input);
+  if (output == "(none)") {
+    output.clear();
+    return true;
+  }
+  if (output.empty()) {
+    return true;
+  }
+  if (output.length() != 95) {
+    return false;
+  }
+  for (unsigned int i = 0; i < output.length(); i++) {
+    char c = output[i];
+    if (i % 3 == 2) {
+      if (c != ':') {
+        return false;
+      }
+    }
+    else if (c >= 'a' && c <= 'f') {
+      output[i] = c - 'a' + 'A';
+    }
+    else if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F'))) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }
 
 EditSiteScreen::EditSiteScreen(Ui* ui) : UIWindow(ui, "EditSiteScreen"), mso(*vv) {
@@ -498,6 +527,14 @@ bool EditSiteScreen::keyPressed(unsigned int ch) {
         else if (identifier == "tlsallowexpired") {
           site->setTLSAllowExpired(std::static_pointer_cast<MenuSelectOptionCheckBox>(msoe)->getData());
         }
+        else if (identifier == "tlsfp") {
+          std::string fp;
+          if (!normalizeFingerprint(std::static_pointer_cast<MenuSelectOptionTextField>(msoe)->getData(), fp)) {
+            ui->goInfo("Invalid TLS fingerprint format. Expected 32 colon-separated hex bytes.");
+            return true;
+          }
+          site->setTLSFingerprint(fp);
+        }
         else if (identifier == "transferprotocol") {
           site->setTransferProtocol(static_cast<TransferProtocol>(std::static_pointer_cast<MenuSelectOptionTextArrow>(msoe)->getData()));
         }
@@ -621,6 +658,7 @@ bool EditSiteScreen::keyPressed(unsigned int ch) {
       if (changedname) {
         global->getSiteLogicManager()->getSiteLogic(site->getName())->updateName();
       }
+      global->getSiteLogicManager()->resetTLSFingerprintCheck(site->getName());
 
       global->getSettingsLoaderSaver()->saveSettings();
       ui->returnToLast();

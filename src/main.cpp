@@ -92,6 +92,7 @@ public:
     Core::registerSignalDispatch(SIGTERM, wm, &terminator);
     Core::registerSignalDispatch(SIGINT, wm, &terminator);
     Core::registerSignalDispatch(SIGQUIT, wm, &terminator);
+    Core::registerSignalDispatch(SIGHUP, wm, &terminator);
     sls->init();
     tp->tickerLoop();
     global->getSubProcessManager()->killAll();

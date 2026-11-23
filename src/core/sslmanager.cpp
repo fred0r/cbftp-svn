@@ -226,7 +226,7 @@ X509* createSelfSignedCertificate(EVP_PKEY* pkey) {
   ASN1_INTEGER_set(X509_get_serialNumber(x509), 1);
   X509_gmtime_adj(X509_get_notBefore(x509), 0);
   X509_gmtime_adj(X509_get_notAfter(x509), 31536000L);
-  X509_NAME* name = X509_get_subject_name(x509);
+  X509_NAME* name = const_cast<X509_NAME*>(X509_get_subject_name(x509));
   if (!name) {
     getLogger()->log("SSLManager", "X509_get_subject_name failed: " + SSLErrors(), LogLevel::ERROR);
     X509_free(x509);
@@ -263,10 +263,15 @@ X509* createSelfSignedCertificate(EVP_PKEY* pkey) {
   return x509;
 }
 
-std::string ip2Str(ASN1_OCTET_STRING* ip) {
-  socklen_t addrlen = ip->length == 4 ? INET_ADDRSTRLEN : INET6_ADDRSTRLEN;
+std::string ip2Str(const ASN1_OCTET_STRING* ip) {
+#if OPENSSL_VERSION_NUMBER >= 0x40100000L
+  size_t iplen = ASN1_STRING_get_length(ip);
+#else
+  int iplen = ASN1_STRING_length(ip);
+#endif
+  socklen_t addrlen = iplen == 4 ? INET_ADDRSTRLEN : INET6_ADDRSTRLEN;
   char buf[INET6_ADDRSTRLEN];
-  if (!inet_ntop(ip->length == 4 ? AF_INET : AF_INET6, ip->data, buf, addrlen)) {
+  if (!inet_ntop(iplen == 4 ? AF_INET : AF_INET6, ASN1_STRING_get0_data(ip), buf, addrlen)) {
     getLogger()->log("SSLManager", "inet_ntop failed: " + util::getStrError(errno), LogLevel::ERROR);
     return "";
   }
@@ -303,15 +308,15 @@ std::list<std::string> getCertSubjectAltNames(X509* cert) {
 }
 
 std::string getCertCommonName(X509* cert) {
-  X509_NAME* subjectName = X509_get_subject_name(cert);
+  const X509_NAME* subjectName = X509_get_subject_name(cert);
   if (!subjectName) {
     getLogger()->log("SSLManager", "X509_get_subject_name failed.", LogLevel::ERROR);
     return "";
   }
   int idx = X509_NAME_get_index_by_NID(subjectName, NID_commonName, -1);
-  X509_NAME_ENTRY* entry = X509_NAME_get_entry(subjectName, idx);
+  const X509_NAME_ENTRY* entry = X509_NAME_get_entry(subjectName, idx);
   if (entry) {
-    ASN1_STRING* entryData = X509_NAME_ENTRY_get_data(entry);
+    const ASN1_STRING* entryData = X509_NAME_ENTRY_get_data(entry);
     if (entryData) {
       unsigned char* host;
       int length = ASN1_STRING_to_UTF8(&host, entryData);
