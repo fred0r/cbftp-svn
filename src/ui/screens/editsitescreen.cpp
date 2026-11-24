@@ -1,5 +1,7 @@
 #include "editsitescreen.h"
 
+#include <functional>
+#include <map>
 #include <set>
 
 #include "../../globalcontext.h"
@@ -71,6 +73,24 @@ bool normalizeFingerprint(const std::string& input, std::string& output) {
   }
   return true;
 }
+
+std::string uiFieldValue(const std::shared_ptr<MenuSelectOptionElement>& element) {
+  return std::static_pointer_cast<MenuSelectOptionTextField>(element)->getData();
+}
+
+int uiArrowValue(const std::shared_ptr<MenuSelectOptionElement>& element) {
+  return std::static_pointer_cast<MenuSelectOptionTextArrow>(element)->getData();
+}
+
+std::string uiArrowText(const std::shared_ptr<MenuSelectOptionElement>& element) {
+  return std::static_pointer_cast<MenuSelectOptionTextArrow>(element)->getDataText();
+}
+
+bool uiCheckBoxValue(const std::shared_ptr<MenuSelectOptionElement>& element) {
+  return std::static_pointer_cast<MenuSelectOptionCheckBox>(element)->getData();
+}
+
+typedef std::map<std::string, std::function<bool(Site&, const std::shared_ptr<MenuSelectOptionElement>&)> > SiteUiDispatch;
 
 }
 
@@ -475,159 +495,204 @@ bool EditSiteScreen::keyPressed(unsigned int ch) {
         return true;
       }
       site->setName(newname);
+      SiteUiDispatch sitehandlers;
+      sitehandlers["addr"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setAddresses(uiFieldValue(element));
+        return true;
+      };
+      sitehandlers["user"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setUser(uiFieldValue(element));
+        return true;
+      };
+      sitehandlers["pass"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setPass(uiFieldValue(element));
+        return true;
+      };
+      sitehandlers["basepath"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setBasePath(uiFieldValue(element));
+        return true;
+      };
+      sitehandlers["logins"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setMaxLogins(uiArrowValue(element));
+        return true;
+      };
+      sitehandlers["maxup"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setMaxUp(uiArrowValue(element));
+        return true;
+      };
+      sitehandlers["maxdn"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setMaxDn(uiArrowValue(element));
+        return true;
+      };
+      sitehandlers["pret"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setPRET(uiCheckBoxValue(element));
+        return true;
+      };
+      sitehandlers["binary"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setForceBinaryMode(uiCheckBoxValue(element));
+        return true;
+      };
+      sitehandlers["tlsmode"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setTLSMode(static_cast<TLSMode>(uiArrowValue(element)));
+        return true;
+      };
+      sitehandlers["tlstransfer"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setSSLTransferPolicy(uiArrowValue(element));
+        return true;
+      };
+      sitehandlers["tlsfpver"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setTLSFingerprintVerification(uiCheckBoxValue(element));
+        return true;
+      };
+      sitehandlers["tlsfpretry"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setTLSFingerprintAutoRetry(uiCheckBoxValue(element));
+        return true;
+      };
+      sitehandlers["tlsrequirevalid"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setRequireValidCert(uiCheckBoxValue(element));
+        return true;
+      };
+      sitehandlers["tlsexpirywarn"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setTLSExpiryWarn(std::stoi(uiFieldValue(element)));
+        return true;
+      };
+      sitehandlers["tlsallowexpired"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setTLSAllowExpired(uiCheckBoxValue(element));
+        return true;
+      };
+      sitehandlers["tlsfp"] = [this](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        std::string fp;
+        if (!normalizeFingerprint(uiFieldValue(element), fp)) {
+          ui->goInfo("Invalid TLS fingerprint format. Expected 32 colon-separated hex bytes.");
+          return false;
+        }
+        site.setTLSFingerprint(fp);
+        return true;
+      };
+      sitehandlers["transferprotocol"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setTransferProtocol(static_cast<TransferProtocol>(uiArrowValue(element)));
+        return true;
+      };
+      sitehandlers["sscn"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setSupportsSSCN(uiCheckBoxValue(element));
+        return true;
+      };
+      sitehandlers["cpsv"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setSupportsCPSV(uiCheckBoxValue(element));
+        return true;
+      };
+      sitehandlers["cepr"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setSupportsCEPR(uiCheckBoxValue(element));
+        return true;
+      };
+      sitehandlers["stayloggedin"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setStayLoggedIn(uiCheckBoxValue(element));
+        return true;
+      };
+      sitehandlers["listcommand"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setListCommand(uiArrowValue(element));
+        return true;
+      };
+      sitehandlers["xdupe"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setUseXDUPE(uiCheckBoxValue(element));
+        return true;
+      };
+      sitehandlers["freetext"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setFreeText(uiFieldValue(element));
+        return true;
+      };
+      sitehandlers["disabled"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setDisabled(uiCheckBoxValue(element));
+        return true;
+      };
+      sitehandlers["allowupload"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setAllowUpload(static_cast<SiteAllowTransfer>(uiArrowValue(element)));
+        return true;
+      };
+      sitehandlers["allowdownload"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setAllowDownload(static_cast<SiteAllowTransfer>(uiArrowValue(element)));
+        return true;
+      };
+      sitehandlers["priority"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setPriority(static_cast<SitePriority>(uiArrowValue(element)));
+        return true;
+      };
+      sitehandlers["refreshrate"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setRefreshRate(static_cast<RefreshRate>(uiArrowValue(element)));
+        return true;
+      };
+      sitehandlers["brokenpasv"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setBrokenPASV(uiCheckBoxValue(element));
+        return true;
+      };
+      sitehandlers["idletime"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setMaxIdleTime(std::stoi(uiFieldValue(element)));
+        return true;
+      };
+      sitehandlers["useproxy"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        int proxytype = uiArrowValue(element);
+        site.setProxyType(proxytype);
+        if (proxytype == SITE_PROXY_USE) {
+          site.setProxy(uiArrowText(element));
+        }
+        return true;
+      };
+      sitehandlers["dataproxy"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        int proxytype = uiArrowValue(element);
+        site.setDataProxyType(proxytype);
+        if (proxytype == SITE_PROXY_USE) {
+          site.setDataProxy(uiArrowText(element));
+        }
+        return true;
+      };
+      sitehandlers["affils"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        std::string affils = uiFieldValue(element);
+        site.clearAffils();
+        size_t pos;
+        while ((pos = affils.find(",")) != std::string::npos) {
+          affils[pos] = ' ';
+        }
+        while ((pos = affils.find(";")) != std::string::npos) {
+          affils[pos] = ' ';
+        }
+        std::list<std::string> affilslist = util::trim(util::split(affils));
+        for (std::list<std::string>::const_iterator it = affilslist.begin(); it != affilslist.end(); it++) {
+          site.addAffil(*it);
+        }
+        return true;
+      };
+      sitehandlers["sourcepolicy"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setTransferSourcePolicy(uiArrowValue(element));
+        return true;
+      };
+      sitehandlers["targetpolicy"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setTransferTargetPolicy(uiArrowValue(element));
+        return true;
+      };
+      sitehandlers["exceptsrc"] = [&exceptsrclist](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        exceptsrclist = util::trim(util::split(uiFieldValue(element), ","));
+        return true;
+      };
+      sitehandlers["exceptdst"] = [&exceptdstlist](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        exceptdstlist = util::trim(util::split(uiFieldValue(element), ","));
+        return true;
+      };
+      sitehandlers["maxspreadjobtimeseconds"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setMaxSpreadJobTimeSeconds(uiArrowValue(element));
+        return true;
+      };
+      sitehandlers["maxtransfertimeseconds"] = [](Site& site, const std::shared_ptr<MenuSelectOptionElement>& element) {
+        site.setMaxTransferTimeSeconds(uiArrowValue(element));
+        return true;
+      };
       for(unsigned int i = 0; i < mso.size(); i++) {
         std::shared_ptr<MenuSelectOptionElement> msoe = mso.getElement(i);
         std::string identifier = msoe->getIdentifier();
-        if (identifier == "addr") {
-          std::string addrports = std::static_pointer_cast<MenuSelectOptionTextField>(msoe)->getData();
-          site->setAddresses(addrports);
-        }
-        else if (identifier == "user") {
-          site->setUser(std::static_pointer_cast<MenuSelectOptionTextField>(msoe)->getData());
-        }
-        else if (identifier == "pass") {
-          site->setPass(std::static_pointer_cast<MenuSelectOptionTextField>(msoe)->getData());
-        }
-        else if (identifier == "basepath") {
-          site->setBasePath(std::static_pointer_cast<MenuSelectOptionTextField>(msoe)->getData());
-        }
-        else if (identifier == "logins") {
-          site->setMaxLogins(std::static_pointer_cast<MenuSelectOptionTextArrow>(msoe)->getData());
-        }
-        else if (identifier == "maxup") {
-          site->setMaxUp(std::static_pointer_cast<MenuSelectOptionTextArrow>(msoe)->getData());
-        }
-        else if (identifier == "maxdn") {
-          site->setMaxDn(std::static_pointer_cast<MenuSelectOptionTextArrow>(msoe)->getData());
-        }
-        else if (identifier == "pret") {
-          site->setPRET(std::static_pointer_cast<MenuSelectOptionCheckBox>(msoe)->getData());
-        }
-        else if (identifier == "binary") {
-          site->setForceBinaryMode(std::static_pointer_cast<MenuSelectOptionCheckBox>(msoe)->getData());
-        }
-        else if (identifier == "tlsmode") {
-          site->setTLSMode(static_cast<TLSMode>(std::static_pointer_cast<MenuSelectOptionTextArrow>(msoe)->getData()));
-        }
-        else if (identifier == "tlstransfer") {
-          site->setSSLTransferPolicy(std::static_pointer_cast<MenuSelectOptionTextArrow>(msoe)->getData());
-        }
-        else if (identifier == "tlsfpver") {
-          site->setTLSFingerprintVerification(std::static_pointer_cast<MenuSelectOptionCheckBox>(msoe)->getData());
-        }
-        else if (identifier == "tlsfpretry") {
-          site->setTLSFingerprintAutoRetry(std::static_pointer_cast<MenuSelectOptionCheckBox>(msoe)->getData());
-        }
-        else if (identifier == "tlsrequirevalid") {
-          site->setRequireValidCert(std::static_pointer_cast<MenuSelectOptionCheckBox>(msoe)->getData());
-        }
-        else if (identifier == "tlsexpirywarn") {
-          site->setTLSExpiryWarn(std::stoi(std::static_pointer_cast<MenuSelectOptionTextField>(msoe)->getData()));
-        }
-        else if (identifier == "tlsallowexpired") {
-          site->setTLSAllowExpired(std::static_pointer_cast<MenuSelectOptionCheckBox>(msoe)->getData());
-        }
-        else if (identifier == "tlsfp") {
-          std::string fp;
-          if (!normalizeFingerprint(std::static_pointer_cast<MenuSelectOptionTextField>(msoe)->getData(), fp)) {
-            ui->goInfo("Invalid TLS fingerprint format. Expected 32 colon-separated hex bytes.");
+        SiteUiDispatch::const_iterator handlerit = sitehandlers.find(identifier);
+        if (handlerit != sitehandlers.end()) {
+          if (!handlerit->second(*site, msoe)) {
             return true;
           }
-          site->setTLSFingerprint(fp);
-        }
-        else if (identifier == "transferprotocol") {
-          site->setTransferProtocol(static_cast<TransferProtocol>(std::static_pointer_cast<MenuSelectOptionTextArrow>(msoe)->getData()));
-        }
-        else if (identifier == "sscn") {
-          site->setSupportsSSCN(std::static_pointer_cast<MenuSelectOptionCheckBox>(msoe)->getData());
-        }
-        else if (identifier == "cpsv") {
-          site->setSupportsCPSV(std::static_pointer_cast<MenuSelectOptionCheckBox>(msoe)->getData());
-        }
-        else if (identifier == "cepr") {
-          site->setSupportsCEPR(std::static_pointer_cast<MenuSelectOptionCheckBox>(msoe)->getData());
-        }
-        else if (identifier == "stayloggedin") {
-          site->setStayLoggedIn(std::static_pointer_cast<MenuSelectOptionCheckBox>(msoe)->getData());
-        }
-        else if (identifier == "listcommand") {
-          site->setListCommand(std::static_pointer_cast<MenuSelectOptionTextArrow>(msoe)->getData());
-        }
-        else if (identifier == "xdupe") {
-          site->setUseXDUPE(std::static_pointer_cast<MenuSelectOptionCheckBox>(msoe)->getData());
-        }
-        else if (identifier == "freetext") {
-          site->setFreeText(std::static_pointer_cast<MenuSelectOptionTextField>(msoe)->getData());
-        }
-        else if (identifier == "disabled") {
-          site->setDisabled(std::static_pointer_cast<MenuSelectOptionCheckBox>(msoe)->getData());
-        }
-        else if (identifier == "allowupload") {
-          site->setAllowUpload(static_cast<SiteAllowTransfer>(std::static_pointer_cast<MenuSelectOptionTextArrow>(msoe)->getData()));
-        }
-        else if (identifier == "allowdownload") {
-          site->setAllowDownload(static_cast<SiteAllowTransfer>(std::static_pointer_cast<MenuSelectOptionTextArrow>(msoe)->getData()));
-        }
-        else if (identifier == "priority") {
-          site->setPriority(static_cast<SitePriority>(std::static_pointer_cast<MenuSelectOptionTextArrow>(msoe)->getData()));
-        }
-        else if (identifier == "refreshrate") {
-          site->setRefreshRate(static_cast<RefreshRate>(std::static_pointer_cast<MenuSelectOptionTextArrow>(msoe)->getData()));
-        }
-        else if (identifier == "brokenpasv") {
-          site->setBrokenPASV(std::static_pointer_cast<MenuSelectOptionCheckBox>(msoe)->getData());
-        }
-        else if (identifier == "idletime") {
-          site->setMaxIdleTime(std::stoi(std::static_pointer_cast<MenuSelectOptionTextField>(msoe)->getData()));
-        }
-        else if (identifier == "useproxy") {
-          int proxytype = std::static_pointer_cast<MenuSelectOptionTextArrow>(msoe)->getData();
-          site->setProxyType(proxytype);
-          if (proxytype == SITE_PROXY_USE) {
-            site->setProxy(std::static_pointer_cast<MenuSelectOptionTextArrow>(msoe)->getDataText());
-          }
-        }
-        else if (identifier == "dataproxy") {
-          int proxytype = std::static_pointer_cast<MenuSelectOptionTextArrow>(msoe)->getData();
-          site->setDataProxyType(proxytype);
-          if (proxytype == SITE_PROXY_USE) {
-            site->setDataProxy(std::static_pointer_cast<MenuSelectOptionTextArrow>(msoe)->getDataText());
-          }
-        }
-        else if (identifier == "affils") {
-          std::string affils = std::static_pointer_cast<MenuSelectOptionTextField>(msoe)->getData();
-          site->clearAffils();
-          size_t pos;
-          while ((pos = affils.find(",")) != std::string::npos) {
-            affils[pos] = ' ';
-          }
-          while ((pos = affils.find(";")) != std::string::npos) {
-            affils[pos] = ' ';
-          }
-          std::list<std::string> affilslist = util::trim(util::split(affils));
-          for (std::list<std::string>::const_iterator it = affilslist.begin(); it != affilslist.end(); it++) {
-            site->addAffil(*it);
-          }
-        }
-        else if (identifier == "sourcepolicy") {
-          site->setTransferSourcePolicy(std::static_pointer_cast<MenuSelectOptionTextArrow>(msoe)->getData());
-        }
-        else if (identifier == "targetpolicy") {
-          site->setTransferTargetPolicy(std::static_pointer_cast<MenuSelectOptionTextArrow>(msoe)->getData());
-        }
-        else if (identifier == "exceptsrc") {
-          std::string sitestr = std::static_pointer_cast<MenuSelectOptionTextField>(msoe)->getData();
-          exceptsrclist = util::trim(util::split(sitestr, ","));
-        }
-        else if (identifier == "exceptdst") {
-          std::string sitestr = std::static_pointer_cast<MenuSelectOptionTextField>(msoe)->getData();
-          exceptdstlist = util::trim(util::split(sitestr, ","));
-        }
-        else if (identifier == "maxspreadjobtimeseconds") {
-          site->setMaxSpreadJobTimeSeconds(std::static_pointer_cast<MenuSelectOptionTextArrow>(msoe)->getData());
-        }
-        else if (identifier == "maxtransfertimeseconds") {
-          site->setMaxTransferTimeSeconds(std::static_pointer_cast<MenuSelectOptionTextArrow>(msoe)->getData());
         }
       }
       site->setSkipList(modsite->getSkipList());
