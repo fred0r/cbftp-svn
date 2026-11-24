@@ -230,7 +230,8 @@ void FTPConn::FDSSLSuccess(int sockid, const std::string & cipher, const std::st
   if (state == FTPConnState::AUTH_TLS) {
     doUSER(false);
   }
-  else if (state != FTPConnState::TLS_FINGERPRINT_PROMPT && state != FTPConnState::EXPIRED_CERT_PROMPT) {
+  else if (state != FTPConnState::TLS_FINGERPRINT_PROMPT && state != FTPConnState::TLS_FINGERPRINT_WAIT &&
+           state != FTPConnState::EXPIRED_CERT_PROMPT && state != FTPConnState::DISCONNECTED) {
     state = FTPConnState::IDLE;
   }
 }
@@ -239,79 +240,103 @@ void FTPConn::handleTLSFingerprint(const std::string& fingerprint) {
   if (site->getTLSMode() == TLSMode::NONE || fingerprint.empty()) {
     return;
   }
-  bool firstcheck = !sl->isTLSFingerprintChecked();
-  if (firstcheck) {
-    sl->markTLSFingerprintChecked();
-    std::string storedfp = site->getTLSFingerprint();
+  sl->refreshTLSFingerprintCheck();
+  if (sl->isTLSFingerprintCheckBlocked()) {
+    disconnect();
+    return;
+  }
+  if (sl->isTLSFingerprintCheckCurrent()) {
+    validateTLSCertificate(fingerprint);
+    return;
+  }
+  if (sl->isTLSFingerprintCheckPending()) {
     pendingFingerprint = fingerprint;
-    oldFingerprint = storedfp;
-    
-    if (storedfp.empty()) {
-      site->updateTLSFingerprint(fingerprint);
-      if (rawbuf) {
-        rawBufWriteLine("[TLS fingerprint saved: " + fingerprint + "]");
-      }
-      global->getEventLog()->log("FTPConn", site->getName() +
-                                 ": TLS fingerprint saved: " + fingerprint, Core::LogLevel::INFO);
-    }
-    else if (storedfp == fingerprint) {
-      if (rawbuf) {
-        rawBufWriteLine("[TLS fingerprint verified]");
-      }
-      global->getEventLog()->log("FTPConn", site->getName() +
-                                 ": TLS fingerprint verified", Core::LogLevel::DEBUG);
-    }
-    else {
-      bool verification = site->getTLSFingerprintVerification();
-      bool auto_retry = shouldAutoRetry();
+    state = FTPConnState::TLS_FINGERPRINT_WAIT;
+    return;
+  }
 
-      if (verification) {
-        if (isAPIConnection()) {
+  sl->startTLSFingerprintCheck();
+  std::string storedfp = site->getTLSFingerprint();
+  pendingFingerprint = fingerprint;
+  oldFingerprint = storedfp;
+
+  if (storedfp.empty()) {
+    site->updateTLSFingerprint(fingerprint);
+    if (rawbuf) {
+      rawBufWriteLine("[TLS fingerprint saved: " + fingerprint + "]");
+    }
+    global->getEventLog()->log("FTPConn", site->getName() +
+                               ": TLS fingerprint saved: " + fingerprint, Core::LogLevel::INFO);
+    sl->completeTLSFingerprintCheck();
+    sl->resumeTLSFingerprintWaiters(true);
+  }
+  else if (storedfp == fingerprint) {
+    if (rawbuf) {
+      rawBufWriteLine("[TLS fingerprint verified]");
+    }
+    global->getEventLog()->log("FTPConn", site->getName() +
+                               ": TLS fingerprint verified", Core::LogLevel::DEBUG);
+    sl->completeTLSFingerprintCheck();
+    sl->resumeTLSFingerprintWaiters(true);
+  }
+  else {
+    bool verification = site->getTLSFingerprintVerification();
+    bool auto_retry = shouldAutoRetry();
+
+    if (verification) {
+      if (isAPIConnection()) {
+        if (rawbuf) {
+          rawBufWriteLine("[TLS FINGERPRINT CHANGED! Expected: " + storedfp + " Got: " + fingerprint + "]");
+        }
+        global->getEventLog()->log("FTPConn", site->getName() +
+                                   ": TLS FINGERPRINT CHANGED! Expected: " + storedfp + " Got: " + fingerprint,
+                                   Core::LogLevel::ERROR);
+        sl->fingerprintChangedError(id, site->getName(), storedfp, fingerprint);
+        disconnect();
+        return;
+      }
+      else {
+        if (auto_retry) {
+          site->updateTLSFingerprint(fingerprint);
+          if (rawbuf) {
+            rawBufWriteLine("[TLS fingerprint changed, auto-updated: " + fingerprint + "]");
+          }
+          global->getEventLog()->log("FTPConn", site->getName() +
+                                     ": TLS fingerprint auto-updated: " + fingerprint, Core::LogLevel::WARNING);
+          sl->completeTLSFingerprintCheck();
+          sl->resumeTLSFingerprintWaiters(true);
+        }
+        else {
           if (rawbuf) {
             rawBufWriteLine("[TLS FINGERPRINT CHANGED! Expected: " + storedfp + " Got: " + fingerprint + "]");
+            rawBufWriteLine("[Connection aborted - user decision required]");
           }
           global->getEventLog()->log("FTPConn", site->getName() +
                                      ": TLS FINGERPRINT CHANGED! Expected: " + storedfp + " Got: " + fingerprint,
                                      Core::LogLevel::ERROR);
-          sl->fingerprintChangedError(id, site->getName(), storedfp, fingerprint);
-          disconnect();
+          sl->fingerprintPrompt(id, site->getName(), storedfp, fingerprint);
+          state = FTPConnState::TLS_FINGERPRINT_PROMPT;
           return;
         }
-        else {
-          if (auto_retry) {
-            site->updateTLSFingerprint(fingerprint);
-            if (rawbuf) {
-              rawBufWriteLine("[TLS fingerprint changed, auto-updated: " + fingerprint + "]");
-            }
-            global->getEventLog()->log("FTPConn", site->getName() +
-                                       ": TLS fingerprint auto-updated: " + fingerprint, Core::LogLevel::WARNING);
-          }
-          else {
-            if (rawbuf) {
-              rawBufWriteLine("[TLS FINGERPRINT CHANGED! Expected: " + storedfp + " Got: " + fingerprint + "]");
-              rawBufWriteLine("[Connection aborted - user decision required]");
-            }
-            global->getEventLog()->log("FTPConn", site->getName() +
-                                       ": TLS FINGERPRINT CHANGED! Expected: " + storedfp + " Got: " + fingerprint,
-                                       Core::LogLevel::ERROR);
-            sl->fingerprintPrompt(id, site->getName(), storedfp, fingerprint);
-            state = FTPConnState::TLS_FINGERPRINT_PROMPT;
-            return;
-          }
-        }
       }
-      else {
-        site->updateTLSFingerprint(fingerprint);
-        if (rawbuf) {
-          rawBufWriteLine("[TLS fingerprint changed (verification disabled): " + fingerprint + "]");
-        }
-        global->getEventLog()->log("FTPConn", site->getName() +
-                                    ": TLS fingerprint changed (verification disabled): " + fingerprint,
-                                    Core::LogLevel::WARNING);
+    }
+    else {
+      site->updateTLSFingerprint(fingerprint);
+      if (rawbuf) {
+        rawBufWriteLine("[TLS fingerprint changed (verification disabled): " + fingerprint + "]");
       }
+      global->getEventLog()->log("FTPConn", site->getName() +
+                                  ": TLS fingerprint changed (verification disabled): " + fingerprint,
+                                  Core::LogLevel::WARNING);
+      sl->completeTLSFingerprintCheck();
+      sl->resumeTLSFingerprintWaiters(true);
     }
   }
 
+  validateTLSCertificate(fingerprint);
+}
+
+bool FTPConn::validateTLSCertificate(const std::string& fingerprint) {
   std::string hostname = site->getAddress().host;
   if (!hostname.empty() && !fingerprint.empty()) {
     int expdays = iom->checkTLSCertExpiry(sockid);
@@ -330,12 +355,12 @@ void FTPConn::handleTLSFingerprint(const std::string& fingerprint) {
         if (isAPIConnection()) {
           sl->expiredCertError(id, site->getName(), expdays);
           disconnect();
-          return;
+          return false;
         }
         else {
           sl->expiredCertPrompt(id, site->getName(), expdays);
           state = FTPConnState::EXPIRED_CERT_PROMPT;
-          return;
+          return false;
         }
       }
     }
@@ -353,17 +378,18 @@ void FTPConn::handleTLSFingerprint(const std::string& fingerprint) {
         global->getEventLog()->log("FTPConn", site->getName() + " " + std::to_string(id) +
             ": TLS hostname mismatch: " + hostname, Core::LogLevel::ERROR);
         disconnect();
-        return;
+        return false;
       }
       if (!iom->checkTLSCertTrust(sockid)) {
         if (rawbuf) rawBufWriteLine("[TLS certificate chain not trusted - disconnecting]");
         global->getEventLog()->log("FTPConn", site->getName() + " " + std::to_string(id) +
             ": TLS cert chain not trusted", Core::LogLevel::ERROR);
         disconnect();
-        return;
+        return false;
       }
     }
   }
+  return true;
 }
 
 void FTPConn::printCipher(const std::string& cipher) {
@@ -618,7 +644,9 @@ void FTPConn::ftpConnectSuccess(int connectorid, const Address& addr) {
     if (!fp.empty()) {
       handleTLSFingerprint(fp);
     }
-    doUSER(false);
+    if (state == FTPConnState::CONNECTING) {
+      doUSER(false);
+    }
   }
 }
 
@@ -1786,6 +1814,18 @@ void FTPConn::resumeAfterFingerprintDecision(bool accept, bool disable_verificat
         ": Connection cancelled by user", Core::LogLevel::INFO);
     disconnect();
   }
+}
+
+void FTPConn::resumeAfterFingerprintWait(bool accept) {
+  if (state != FTPConnState::TLS_FINGERPRINT_WAIT) return;
+  if (!accept) {
+    disconnect();
+    return;
+  }
+  if (!validateTLSCertificate(pendingFingerprint)) {
+    return;
+  }
+  doUSER(false);
 }
 
 void FTPConn::resumeAfterExpiredCertDecision(bool accept) {

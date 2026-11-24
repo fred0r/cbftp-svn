@@ -14,5 +14,4 @@ class SiteLogicManager {
     const std::shared_ptr<SiteLogic> getSiteLogic(const std::string &);
     const std::shared_ptr<SiteLogic> getSiteLogic(SiteLogic *);
     void deleteSiteLogic(const std::string &);
-    void resetTLSFingerprintCheck(const std::string &);
 };

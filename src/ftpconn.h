@@ -58,6 +58,7 @@ enum class FTPConnState {
   RNTO,
   IDLE,
   TLS_FINGERPRINT_PROMPT,
+  TLS_FINGERPRINT_WAIT,
   EXPIRED_CERT_PROMPT
 };
 
@@ -182,6 +183,7 @@ bool xduperun;
     void parseXDUPEData();
   void finishLogin();
   void handleTLSFingerprint(const std::string& fingerprint);
+  bool validateTLSCertificate(const std::string& fingerprint);
   void FDData(int sockid, char* data, unsigned int datalen) override;
     void FDDisconnected(int sockid, Core::DisconnectType reason, const std::string& details) override;
     void FDSSLSuccess(int sockid, const std::string& cipher, const std::string& fingerprint) override;
@@ -277,6 +279,7 @@ const std::list<std::string> & getXDUPEList() const;
   Proxy* getDataProxy() const;
   void debugPrint(const std::string& text);
   void resumeAfterFingerprintDecision(bool accept, bool disable_verification);
+  void resumeAfterFingerprintWait(bool accept);
   void resumeAfterExpiredCertDecision(bool accept);
   bool isAPIConnection() const;
   bool shouldAutoRetry() const;

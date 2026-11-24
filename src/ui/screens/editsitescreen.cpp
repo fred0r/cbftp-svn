@@ -658,7 +658,6 @@ bool EditSiteScreen::keyPressed(unsigned int ch) {
       if (changedname) {
         global->getSiteLogicManager()->getSiteLogic(site->getName())->updateName();
       }
-      global->getSiteLogicManager()->resetTLSFingerprintCheck(site->getName());
 
       global->getSettingsLoaderSaver()->saveSettings();
       ui->returnToLast();

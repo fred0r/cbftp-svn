@@ -170,7 +170,8 @@ SiteLogic::SiteLogic(const std::string & sitename) :
   loggedin(0),
   requestidcounter(0),
   poke(false),
-  tlsfingerprintchecked(false),
+  tlsfingerprintstate(TLSFingerprintState::UNCHECKED),
+  tlsfingerprintgeneration(0),
   currtime(0),
   timesincelastrequestready(0),
   refreshgovernor(site),
@@ -211,7 +212,7 @@ void SiteLogic::disconnectAll(bool hard) {
   for (unsigned int i = 0; i < conns.size(); i++) {
     disconnectConn(i, hard);
   }
-  tlsfingerprintchecked = false;
+  tlsfingerprintstate = TLSFingerprintState::UNCHECKED;
 }
 
 std::shared_ptr<SiteRace> SiteLogic::addRace(const std::shared_ptr<Race>& enginerace, const std::string & section, const std::string & release, bool downloadonly) {
@@ -258,7 +259,7 @@ void SiteLogic::addTransferJob(std::shared_ptr<SiteTransferJob> & tj) {
 void SiteLogic::tick(int message) {
   unsigned long long int prevtime = currtime;
   currtime += TICK_INTERVAL;
-  if (tlsfingerprintchecked) {
+  if (tlsfingerprintstate != TLSFingerprintState::UNCHECKED) {
     bool anyconnected = false;
     for (unsigned int i = 0; i < conns.size(); i++) {
       if (conns[i]->isConnected()) {
@@ -267,7 +268,7 @@ void SiteLogic::tick(int message) {
       }
     }
     if (!anyconnected) {
-      tlsfingerprintchecked = false;
+      tlsfingerprintstate = TLSFingerprintState::UNCHECKED;
     }
   }
   int activateslots = 0;
@@ -2084,7 +2085,7 @@ void SiteLogic::registerDownloadLock(int id, const std::shared_ptr<FileList>& fl
 }
 
 void SiteLogic::setNumConnections(unsigned int num) {
-  tlsfingerprintchecked = false;
+  tlsfingerprintstate = TLSFingerprintState::UNCHECKED;
   while (num < conns.size()) {
     bool success = false;
     for (unsigned int i = 0; i < conns.size(); i++) {
@@ -2729,16 +2730,47 @@ std::string SiteLogic::expandVariables(const std::string& text) const {
   return expanded;
 }
 
-bool SiteLogic::isTLSFingerprintChecked() const {
-  return tlsfingerprintchecked;
+bool SiteLogic::isTLSFingerprintCheckCurrent() const {
+  return tlsfingerprintstate == TLSFingerprintState::CHECKED &&
+         tlsfingerprintgeneration == site->getTLSGeneration();
 }
 
-void SiteLogic::markTLSFingerprintChecked() {
-  tlsfingerprintchecked = true;
+bool SiteLogic::isTLSFingerprintCheckPending() const {
+  return tlsfingerprintstate == TLSFingerprintState::PENDING;
 }
 
-void SiteLogic::resetTLSFingerprintCheck() {
-  tlsfingerprintchecked = false;
+bool SiteLogic::isTLSFingerprintCheckBlocked() const {
+  return tlsfingerprintstate == TLSFingerprintState::BLOCKED;
+}
+
+void SiteLogic::refreshTLSFingerprintCheck() {
+  if ((tlsfingerprintstate == TLSFingerprintState::CHECKED ||
+       tlsfingerprintstate == TLSFingerprintState::BLOCKED) &&
+      tlsfingerprintgeneration != site->getTLSGeneration()) {
+    tlsfingerprintstate = TLSFingerprintState::UNCHECKED;
+  }
+}
+
+void SiteLogic::startTLSFingerprintCheck() {
+  tlsfingerprintstate = TLSFingerprintState::PENDING;
+}
+
+void SiteLogic::completeTLSFingerprintCheck() {
+  tlsfingerprintstate = TLSFingerprintState::CHECKED;
+  tlsfingerprintgeneration = site->getTLSGeneration();
+}
+
+void SiteLogic::blockTLSFingerprintCheck() {
+  tlsfingerprintstate = TLSFingerprintState::BLOCKED;
+  tlsfingerprintgeneration = site->getTLSGeneration();
+}
+
+void SiteLogic::resumeTLSFingerprintWaiters(bool accept) {
+  for (unsigned int i = 0; i < conns.size(); i++) {
+    if (conns[i]->getState() == FTPConnState::TLS_FINGERPRINT_WAIT) {
+      conns[i]->resumeAfterFingerprintWait(accept);
+    }
+  }
 }
 
 void SiteLogic::fingerprintPrompt(int connid, const std::string& sitename, const std::string& oldfp, const std::string& newfp) {
@@ -2766,6 +2798,8 @@ void SiteLogic::fingerprintChangedError(int connid, const std::string& sitename,
   pending_fingerprints[connid].sitename = sitename;
   pending_fingerprints[connid].oldfingerprint = oldfp;
   pending_fingerprints[connid].newfingerprint = newfp;
+  blockTLSFingerprintCheck();
+  resumeTLSFingerprintWaiters(false);
 }
 
 void SiteLogic::resumeWithFingerprintDecision(int connid, bool accept, bool disable_verification) {
@@ -2781,6 +2815,14 @@ void SiteLogic::resumeWithFingerprintDecision(int connid, bool accept, bool disa
   }
   
   pending_fingerprints.erase(it);
+  if (accept) {
+    completeTLSFingerprintCheck();
+    resumeTLSFingerprintWaiters(true);
+  }
+  else {
+    blockTLSFingerprintCheck();
+    resumeTLSFingerprintWaiters(false);
+  }
 }
 
 bool SiteLogic::hasFingerprintError(int requestid) const {

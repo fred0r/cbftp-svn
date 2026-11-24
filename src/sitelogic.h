@@ -62,7 +62,14 @@ class SiteLogic : public Core::EventReceiver {
     std::list<SiteLogicRequestReady> requestsready;
     int requestidcounter;
     bool poke;
-    bool tlsfingerprintchecked;
+    enum class TLSFingerprintState {
+      UNCHECKED,
+      PENDING,
+      CHECKED,
+      BLOCKED
+    };
+    TLSFingerprintState tlsfingerprintstate;
+    unsigned int tlsfingerprintgeneration;
     unsigned long long int currtime;
     int timesincelastrequestready;
 std::list<DelayedCommand> delayedcommands;
@@ -228,9 +235,14 @@ void updateName();
   void listAll(int);
   const ConnStateTracker* getConnStateTracker(int) const;
   void setFingerprintPromptCallback(FingerprintPromptCallback* cb);
-  bool isTLSFingerprintChecked() const;
-  void markTLSFingerprintChecked();
-  void resetTLSFingerprintCheck();
+  bool isTLSFingerprintCheckCurrent() const;
+  bool isTLSFingerprintCheckPending() const;
+  bool isTLSFingerprintCheckBlocked() const;
+  void refreshTLSFingerprintCheck();
+  void startTLSFingerprintCheck();
+  void completeTLSFingerprintCheck();
+  void blockTLSFingerprintCheck();
+  void resumeTLSFingerprintWaiters(bool accept);
   void fingerprintPrompt(int connid, const std::string& sitename, const std::string& oldfp, const std::string& newfp);
   void fingerprintChangedError(int connid, const std::string& sitename, const std::string& oldfp, const std::string& newfp);
   void resumeWithFingerprintDecision(int connid, bool accept, bool disable_verification);

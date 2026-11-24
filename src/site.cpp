@@ -61,7 +61,7 @@ Address parseAddress(std::string address) {
 
 }
 
-Site::Site() : skiplist(global->getSkipList()) {
+Site::Site() : skiplist(global->getSkipList()), tlsgeneration(0) {
 
 }
 
@@ -105,6 +105,7 @@ Site::Site(const std::string& name) :
   tlsfingerprint(""),
   tlsfingerprintverification(true),
   tlsfingerprintautoretry(false),
+  tlsgeneration(0),
   requirevalidcert(false),
   tlsallowexpired(false),
   tlsexpirywarn(-1),
@@ -162,6 +163,7 @@ Site::Site(const Site& other) {
   tlsfingerprint = other.tlsfingerprint;
   tlsfingerprintverification = other.tlsfingerprintverification;
   tlsfingerprintautoretry = other.tlsfingerprintautoretry;
+  tlsgeneration = other.tlsgeneration;
   requirevalidcert = other.requirevalidcert;
   tlsallowexpired = other.tlsallowexpired;
   tlsexpirywarn = other.tlsexpirywarn;
@@ -1081,6 +1083,11 @@ std::string Site::getTLSFingerprint() const {
 
 void Site::setTLSFingerprint(const std::string& fp) {
   tlsfingerprint = fp;
+  tlsgeneration++;
+}
+
+unsigned int Site::getTLSGeneration() const {
+  return tlsgeneration;
 }
 
 bool Site::getTLSFingerprintVerification() const {
@@ -1089,6 +1096,7 @@ bool Site::getTLSFingerprintVerification() const {
 
 void Site::setTLSFingerprintVerification(bool enabled) {
   tlsfingerprintverification = enabled;
+  tlsgeneration++;
 }
 
 bool Site::getTLSFingerprintAutoRetry() const {
@@ -1097,6 +1105,7 @@ bool Site::getTLSFingerprintAutoRetry() const {
 
 void Site::setTLSFingerprintAutoRetry(bool enabled) {
   tlsfingerprintautoretry = enabled;
+  tlsgeneration++;
 }
 
 bool Site::getRequireValidCert() const {
