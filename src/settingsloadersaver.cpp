@@ -1,6 +1,8 @@
 #include "settingsloadersaver.h"
 
 #include <ctime>
+#include <functional>
+#include <map>
 #include <regex>
 #include <vector>
 #include <set>
@@ -357,6 +359,246 @@ void SettingsLoaderSaver::loadSettings() {
 
   std::list<std::pair<std::string, std::string> > exceptsources;
   std::list<std::pair<std::string, std::string> > excepttargets;
+  std::map<std::string, std::function<void(Site&, const std::string&)> > sitehandlers;
+  sitehandlers["addr"] = [](Site& site, const std::string& value) {
+    site.setAddresses(value);
+  };
+  sitehandlers["user"] = [](Site& site, const std::string& value) {
+    site.setUser(value);
+  };
+  sitehandlers["passwordb64"] = [](Site& site, const std::string& value) {
+    Core::BinaryData indata(value.begin(), value.end());
+    Core::BinaryData outdata;
+    Crypto::base64Decode(indata, outdata);
+    site.setPass(std::string(outdata.begin(), outdata.end()));
+  };
+  sitehandlers["basepath"] = [](Site& site, const std::string& value) {
+    site.setBasePath(value);
+  };
+  sitehandlers["idletime"] = [](Site& site, const std::string& value) {
+    site.setMaxIdleTime(std::stoi(value));
+  };
+  sitehandlers["pret"] = [](Site& site, const std::string& value) {
+    if (value == "true") site.setPRET(true);
+  };
+  sitehandlers["binary"] = [](Site& site, const std::string& value) {
+    if (value == "true") site.setForceBinaryMode(true);
+  };
+  sitehandlers["xdupe"] = [](Site& site, const std::string& value) {
+    if (value == "false") site.setUseXDUPE(false);
+  };
+  sitehandlers["stayloggedin"] = [](Site& site, const std::string& value) {
+    if (value == "true") site.setStayLoggedIn(true);
+  };
+  sitehandlers["tlsmode"] = [](Site& site, const std::string& value) {
+    site.setTLSMode(static_cast<TLSMode>(std::stoi(value)));
+  };
+  sitehandlers["sslfxpforced"] = [](Site& site, const std::string& value) {
+    if (value == "true") site.setSSLTransferPolicy(SITE_SSL_ALWAYS_ON);
+  };
+  sitehandlers["ssltransfer"] = [](Site& site, const std::string& value) {
+    site.setSSLTransferPolicy(std::stoi(value));
+  };
+  sitehandlers["transferprotocol"] = [](Site& site, const std::string& value) {
+    site.setTransferProtocol(static_cast<TransferProtocol>(std::stoi(value)));
+  };
+  sitehandlers["sscn"] = [](Site& site, const std::string& value) {
+    if (value == "false") site.setSupportsSSCN(false);
+  };
+  sitehandlers["cpsv"] = [](Site& site, const std::string& value) {
+    if (value == "false") site.setSupportsCPSV(false);
+  };
+  sitehandlers["cepr"] = [](Site& site, const std::string& value) {
+    if (value == "false") site.setSupportsCEPR(false);
+  };
+  sitehandlers["listcommand"] = [](Site& site, const std::string& value) {
+    site.setListCommand(std::stoi(value));
+  };
+  sitehandlers["disabled"] = [](Site& site, const std::string& value) {
+    if (value == "true") site.setDisabled(true);
+  };
+  sitehandlers["allowupload"] = [](Site& site, const std::string& value) {
+    site.setAllowUpload(static_cast<SiteAllowTransfer>(std::stoi(value)));
+  };
+  sitehandlers["allowdownload"] = [](Site& site, const std::string& value) {
+    site.setAllowDownload(static_cast<SiteAllowTransfer>(std::stoi(value)));
+  };
+  sitehandlers["priority"] = [](Site& site, const std::string& value) {
+    site.setPriority(static_cast<SitePriority>(std::stoi(value)));
+  };
+  sitehandlers["refreshrate"] = [](Site& site, const std::string& value) {
+    site.setRefreshRate(static_cast<RefreshRate>(std::stoi(value)));
+  };
+  sitehandlers["brokenpasv"] = [](Site& site, const std::string& value) {
+    if (value == "true") site.setBrokenPASV(true);
+  };
+  sitehandlers["logins2"] = [](Site& site, const std::string& value) {
+    site.setMaxLogins(std::stoi(value));
+  };
+  sitehandlers["maxdn2"] = [](Site& site, const std::string& value) {
+    site.setMaxDn(std::stoi(value));
+  };
+  sitehandlers["maxdnpre2"] = [](Site& site, const std::string& value) {
+    site.setMaxDnPre(std::stoi(value));
+  };
+  sitehandlers["maxdncomplete2"] = [](Site& site, const std::string& value) {
+    site.setMaxDnComplete(std::stoi(value));
+  };
+  sitehandlers["maxdntransferjob2"] = [](Site& site, const std::string& value) {
+    site.setMaxDnTransferJob(std::stoi(value));
+  };
+  sitehandlers["maxup2"] = [](Site& site, const std::string& value) {
+    site.setMaxUp(std::stoi(value));
+  };
+  // begin compatibility r1133
+  sitehandlers["logins"] = [](Site& site, const std::string& value) {
+    site.setMaxLogins(value == "0" ? -1 : std::stoi(value));
+  };
+  sitehandlers["maxdn"] = [](Site& site, const std::string& value) {
+    site.setMaxDn(value == "0" ? -1 : std::stoi(value));
+  };
+  sitehandlers["maxdnpre"] = [](Site& site, const std::string& value) {
+    site.setMaxDnPre(value == "0" ? -2 : std::stoi(value));
+  };
+  sitehandlers["maxdncomplete"] = [](Site& site, const std::string& value) {
+    site.setMaxDnComplete(value == "0" ? -2 : std::stoi(value));
+  };
+  sitehandlers["maxdntransferjob"] = [](Site& site, const std::string& value) {
+    site.setMaxDnTransferJob(value == "0" ? -2 : std::stoi(value));
+  };
+  sitehandlers["maxup"] = [](Site& site, const std::string& value) {
+    site.setMaxUp(value == "0" ? -1 : std::stoi(value));
+  };
+  // end compatibility r1133
+  sitehandlers["freeslot"] = [](Site& site, const std::string& value) {
+    if (value == "true") site.setLeaveFreeSlot(true);
+  };
+  sitehandlers["section"] = [](Site& site, const std::string& value) {
+    size_t split = value.find('$');
+    site.addSection(value.substr(0, split), value.substr(split + 1));
+  };
+  sitehandlers["avgspeed"] = [](Site& site, const std::string& value) {
+    size_t split = value.find('$');
+    std::string sitename = value.substr(0, split);
+    unsigned long long int avgspeed = std::stoull(value.substr(split + 1));
+    site.setAverageSpeed(sitename, avgspeed * 1000);
+  };
+  sitehandlers["affil"] = [](Site& site, const std::string& value) {
+    site.addAffil(value);
+  };
+  sitehandlers["proxytype"] = [](Site& site, const std::string& value) {
+    site.setProxyType(std::stoi(value));
+  };
+  sitehandlers["proxyname"] = [](Site& site, const std::string& value) {
+    site.setProxy(value);
+  };
+  sitehandlers["dataproxytype"] = [](Site& site, const std::string& value) {
+    site.setDataProxyType(std::stoi(value));
+  };
+  sitehandlers["dataproxyname"] = [](Site& site, const std::string& value) {
+    site.setDataProxy(value);
+  };
+  sitehandlers["transfersourcepolicy"] = [](Site& site, const std::string& value) {
+    site.setTransferSourcePolicy(std::stoi(value));
+  };
+  sitehandlers["transfertargetpolicy"] = [](Site& site, const std::string& value) {
+    site.setTransferTargetPolicy(std::stoi(value));
+  };
+  sitehandlers["exceptsourcesite"] = [&exceptsources](Site& site, const std::string& value) {
+    exceptsources.push_back(std::make_pair(site.getName(), value));
+  };
+  sitehandlers["excepttargetsite"] = [&excepttargets](Site& site, const std::string& value) {
+    excepttargets.push_back(std::make_pair(site.getName(), value));
+  };
+  sitehandlers["skiplistentry"] = [](Site& site, const std::string& value) {
+    loadSkipListEntry((SkipList *)&site.getSkipList(), value);
+  };
+  sitehandlers["sizeup24"] = [](Site& site, const std::string& value) {
+    stringToTrackerHours(site.getSizeUp(), value);
+  };
+  sitehandlers["sizeup"] = [](Site& site, const std::string& value) {
+    site.getSizeUp().setAll(std::stoll(value));
+  };
+  sitehandlers["filesup24"] = [](Site& site, const std::string& value) {
+    stringToTrackerHours(site.getFilesUp(), value);
+  };
+  sitehandlers["filesup"] = [](Site& site, const std::string& value) {
+    site.getFilesUp().setAll(std::stoi(value));
+  };
+  sitehandlers["sizedown24"] = [](Site& site, const std::string& value) {
+    stringToTrackerHours(site.getSizeDown(), value);
+  };
+  sitehandlers["sizedown"] = [](Site& site, const std::string& value) {
+    site.getSizeDown().setAll(std::stoll(value));
+  };
+  sitehandlers["filesdown24"] = [](Site& site, const std::string& value) {
+    stringToTrackerHours(site.getFilesDown(), value);
+  };
+  sitehandlers["filesdown"] = [](Site& site, const std::string& value) {
+    site.getFilesDown().setAll(std::stoi(value));
+  };
+  sitehandlers["sitessizeup24"] = [](Site& site, const std::string& value) {
+    size_t split = value.find('$');
+    stringToTrackerHours(site.getSiteSizeUp(value.substr(0, split)), value.substr(split + 1));
+  };
+  sitehandlers["sitessizeup"] = [](Site& site, const std::string& value) {
+    size_t split = value.find('$');
+    site.getSiteSizeUp(value.substr(0, split)).setAll(std::stoll(value.substr(split + 1)));
+  };
+  sitehandlers["sitesfilesup24"] = [](Site& site, const std::string& value) {
+    size_t split = value.find('$');
+    stringToTrackerHours(site.getSiteFilesUp(value.substr(0, split)), value.substr(split + 1));
+  };
+  sitehandlers["sitesfilesup"] = [](Site& site, const std::string& value) {
+    size_t split = value.find('$');
+    site.getSiteFilesUp(value.substr(0, split)).setAll(std::stoi(value.substr(split + 1)));
+  };
+  sitehandlers["sitessizedown24"] = [](Site& site, const std::string& value) {
+    size_t split = value.find('$');
+    stringToTrackerHours(site.getSiteSizeDown(value.substr(0, split)), value.substr(split + 1));
+  };
+  sitehandlers["sitessizedown"] = [](Site& site, const std::string& value) {
+    size_t split = value.find('$');
+    site.getSiteSizeDown(value.substr(0, split)).setAll(std::stoll(value.substr(split + 1)));
+  };
+  sitehandlers["sitesfilesdown24"] = [](Site& site, const std::string& value) {
+    size_t split = value.find('$');
+    stringToTrackerHours(site.getSiteFilesDown(value.substr(0, split)), value.substr(split + 1));
+  };
+  sitehandlers["sitesfilesdown"] = [](Site& site, const std::string& value) {
+    size_t split = value.find('$');
+    site.getSiteFilesDown(value.substr(0, split)).setAll(std::stoi(value.substr(split + 1)));
+  };
+  sitehandlers["maxtransfertimeseconds"] = [](Site& site, const std::string& value) {
+    site.setMaxTransferTimeSeconds(std::stoi(value));
+  };
+  sitehandlers["maxspreadjobtimeseconds"] = [](Site& site, const std::string& value) {
+    site.setMaxSpreadJobTimeSeconds(std::stoi(value));
+  };
+  sitehandlers["freetextb64"] = [](Site& site, const std::string& value) {
+    Core::BinaryData indata(value.begin(), value.end());
+    Core::BinaryData outdata;
+    Crypto::base64Decode(indata, outdata);
+    site.setFreeText(std::string(outdata.begin(), outdata.end()));
+  };
+  sitehandlers["tlsfp"] = [](Site& site, const std::string& value) {
+    site.setTLSFingerprint(value);
+  };
+  sitehandlers["tlsfpver"] = [](Site& site, const std::string& value) {
+    site.setTLSFingerprintVerification(value == "true" || value == "1");
+  };
+  sitehandlers["tlsfpretry"] = [](Site& site, const std::string& value) {
+    site.setTLSFingerprintAutoRetry(value == "true" || value == "1");
+  };
+  sitehandlers["tlsrequirevalid"] = [](Site& site, const std::string& value) {
+    site.setRequireValidCert(value == "true" || value == "1");
+  };
+  sitehandlers["tlsexpirywarn"] = [](Site& site, const std::string& value) {
+    site.setTLSExpiryWarn(std::stoi(value));
+  };
+  sitehandlers["tlsallowexpired"] = [](Site& site, const std::string& value) {
+    site.setTLSAllowExpired(value == "true" || value == "1");
+  };
   dfh->getDataFor("SiteManager", &lines);
   for (it = lines.begin(); it != lines.end(); it++) {
     line = *it;
@@ -371,260 +613,9 @@ void SettingsLoaderSaver::loadSettings() {
       site = std::make_shared<Site>(name);
       global->getSiteManager()->addSiteLoad(site);
     }
-    if (!setting.compare("addr")) {
-      site->setAddresses(value);
-    }
-    else if (!setting.compare("user")) {
-      site->setUser(value);
-    }
-    else if (!setting.compare("passwordb64")) {
-      Core::BinaryData indata(value.begin(), value.end());
-      Core::BinaryData outdata;
-      Crypto::base64Decode(indata, outdata);
-      site->setPass(std::string(outdata.begin(), outdata.end()));
-    }
-    else if (!setting.compare("basepath")) {
-      site->setBasePath(value);
-    }
-    else if (!setting.compare("idletime")) {
-      site->setMaxIdleTime(std::stoi(value));
-    }
-    else if (!setting.compare("pret")) {
-      if (!value.compare("true")) site->setPRET(true);
-    }
-    else if (!setting.compare("binary")) {
-      if (!value.compare("true")) site->setForceBinaryMode(true);
-    }
-    else if (!setting.compare("xdupe")) {
-      if (!value.compare("false")) site->setUseXDUPE(false);
-    }
-    else if (!setting.compare("stayloggedin")) {
-      if (!value.compare("true")) site->setStayLoggedIn(true);
-    }
-    else if (!setting.compare("tlsmode")) {
-      site->setTLSMode(static_cast<TLSMode>(std::stoi(value)));
-    }
-    else if (!setting.compare("sslfxpforced")) {
-      if (!value.compare("true")) site->setSSLTransferPolicy(SITE_SSL_ALWAYS_ON);
-    }
-    else if (!setting.compare("ssltransfer")) {
-      site->setSSLTransferPolicy(std::stoi(value));
-    }
-    else if (!setting.compare("transferprotocol")) {
-      site->setTransferProtocol(static_cast<TransferProtocol>(std::stoi(value)));
-    }
-    else if (!setting.compare("sscn")) {
-      if (!value.compare("false")) site->setSupportsSSCN(false);
-    }
-    else if (!setting.compare("cpsv")) {
-      if (!value.compare("false")) site->setSupportsCPSV(false);
-    }
-    else if (!setting.compare("cepr")) {
-      if (!value.compare("false")) site->setSupportsCEPR(false);
-    }
-    else if (!setting.compare("listcommand")) {
-      site->setListCommand(std::stoi(value));
-    }
-    else if (!setting.compare("disabled")) {
-      if (!value.compare("true")) site->setDisabled(true);
-    }
-    else if (!setting.compare("allowupload")) {
-      site->setAllowUpload(static_cast<SiteAllowTransfer>(std::stoi(value)));
-    }
-    else if (!setting.compare("allowdownload")) {
-      site->setAllowDownload(static_cast<SiteAllowTransfer>(std::stoi(value)));
-    }
-    else if (!setting.compare("priority")) {
-      site->setPriority(static_cast<SitePriority>(std::stoi(value)));
-    }
-    else if (!setting.compare("refreshrate")) {
-      site->setRefreshRate(static_cast<RefreshRate>(std::stoi(value)));
-    }
-    else if (!setting.compare("brokenpasv")) {
-      if (!value.compare("true")) site->setBrokenPASV(true);
-    }
-    else if (!setting.compare("logins2")) {
-      site->setMaxLogins(std::stoi(value));
-    }
-    else if (!setting.compare("maxdn2")) {
-      site->setMaxDn(std::stoi(value));
-    }
-    else if (!setting.compare("maxdnpre2")) {
-      site->setMaxDnPre(std::stoi(value));
-    }
-    else if (!setting.compare("maxdncomplete2")) {
-      site->setMaxDnComplete(std::stoi(value));
-    }
-    else if (!setting.compare("maxdntransferjob2")) {
-      site->setMaxDnTransferJob(std::stoi(value));
-    }
-    else if (!setting.compare("maxup2")) {
-      site->setMaxUp(std::stoi(value));
-    }
-    // begin compatibility r1133
-    else if (!setting.compare("logins")) {
-      site->setMaxLogins(value == "0" ? -1 : std::stoi(value));
-    }
-    else if (!setting.compare("maxdn")) {
-      site->setMaxDn(value == "0" ? -1 : std::stoi(value));
-    }
-    else if (!setting.compare("maxdnpre")) {
-      site->setMaxDnPre(value == "0" ? -2 : std::stoi(value));
-    }
-    else if (!setting.compare("maxdncomplete")) {
-      site->setMaxDnComplete(value == "0" ? -2 : std::stoi(value));
-    }
-    else if (!setting.compare("maxdntransferjob")) {
-      site->setMaxDnTransferJob(value == "0" ? -2 : std::stoi(value));
-    }
-    else if (!setting.compare("maxup")) {
-      site->setMaxUp(value == "0" ? -1 : std::stoi(value));
-    }
-    // end compatibility r1133
-    else if (!setting.compare("freeslot")) {
-      if (!value.compare("true")) {
-        site->setLeaveFreeSlot(true);
-      }
-    }
-    else if (!setting.compare("section")) {
-      size_t split = value.find('$');
-      std::string sectionname = value.substr(0, split);
-      std::string sectionpath = value.substr(split + 1);
-      site->addSection(sectionname, sectionpath);
-    }
-    else if (!setting.compare("avgspeed")) {
-      size_t split = value.find('$');
-      std::string sitename = value.substr(0, split);
-      unsigned long long int avgspeed = std::stoull(value.substr(split + 1));
-      site->setAverageSpeed(sitename, avgspeed * 1000);
-    }
-    else if (!setting.compare("affil")) {
-      site->addAffil(value);
-    }
-    else if (!setting.compare("proxytype")) {
-      site->setProxyType(std::stoi(value));
-    }
-    else if (!setting.compare("proxyname")) {
-      site->setProxy(value);
-    }
-    else if (!setting.compare("dataproxytype")) {
-      site->setDataProxyType(std::stoi(value));
-    }
-    else if (!setting.compare("dataproxyname")) {
-      site->setDataProxy(value);
-    }
-    else if (!setting.compare("transfersourcepolicy")) {
-      site->setTransferSourcePolicy(std::stoi(value));
-    }
-    else if (!setting.compare("transfertargetpolicy")) {
-      site->setTransferTargetPolicy(std::stoi(value));
-    }
-    else if (!setting.compare("exceptsourcesite")) {
-      exceptsources.push_back(std::pair<std::string, std::string>(name, value));
-    }
-    else if (!setting.compare("excepttargetsite")) {
-      excepttargets.push_back(std::pair<std::string, std::string>(name, value));
-    }
-    else if (!setting.compare("skiplistentry")) {
-      loadSkipListEntry((SkipList *)&site->getSkipList(), value);
-    }
-    else if (!setting.compare("sizeup24")) {
-      stringToTrackerHours(site->getSizeUp(), value);
-    }
-    else if (!setting.compare("sizeup")) {
-      site->getSizeUp().setAll(std::stoll(value));
-    }
-    else if (!setting.compare("filesup24")) {
-      stringToTrackerHours(site->getFilesUp(), value);
-    }
-    else if (!setting.compare("filesup")) {
-      site->getFilesUp().setAll(std::stoi(value));
-    }
-    else if (!setting.compare("sizedown24")) {
-      stringToTrackerHours(site->getSizeDown(), value);
-    }
-    else if (!setting.compare("sizedown")) {
-      site->getSizeDown().setAll(std::stoll(value));
-    }
-    else if (!setting.compare("filesdown24")) {
-      stringToTrackerHours(site->getFilesDown(), value);
-    }
-    else if (!setting.compare("filesdown")) {
-      site->getFilesDown().setAll(std::stoi(value));
-    }
-    else if (!setting.compare("sitessizeup24")) {
-      size_t split = value.find('$');
-      std::string sitename = value.substr(0, split);
-      stringToTrackerHours(site->getSiteSizeUp(sitename), value.substr(split + 1));
-    }
-    else if (!setting.compare("sitessizeup")) {
-      size_t split = value.find('$');
-      std::string sitename = value.substr(0, split);
-      unsigned long long int size = std::stoll(value.substr(split + 1));
-      site->getSiteSizeUp(sitename).setAll(size);
-    }
-    else if (!setting.compare("sitesfilesup24")) {
-      size_t split = value.find('$');
-      std::string sitename = value.substr(0, split);
-      stringToTrackerHours(site->getSiteFilesUp(sitename), value.substr(split + 1));
-    }
-    else if (!setting.compare("sitesfilesup")) {
-      size_t split = value.find('$');
-      std::string sitename = value.substr(0, split);
-      unsigned int files = std::stoi(value.substr(split + 1));
-      site->getSiteFilesUp(sitename).setAll(files);
-    }
-    else if (!setting.compare("sitessizedown24")) {
-      size_t split = value.find('$');
-      std::string sitename = value.substr(0, split);
-      stringToTrackerHours(site->getSiteSizeDown(sitename), value.substr(split + 1));
-    }
-    else if (!setting.compare("sitessizedown")) {
-      size_t split = value.find('$');
-      std::string sitename = value.substr(0, split);
-      unsigned long long int size = std::stoll(value.substr(split + 1));
-      site->getSiteSizeDown(sitename).setAll(size);
-    }
-    else if (!setting.compare("sitesfilesdown24")) {
-      size_t split = value.find('$');
-      std::string sitename = value.substr(0, split);
-      stringToTrackerHours(site->getSiteFilesDown(sitename), value.substr(split + 1));
-    }
-    else if (!setting.compare("sitesfilesdown")) {
-      size_t split = value.find('$');
-      std::string sitename = value.substr(0, split);
-      unsigned int files = std::stoi(value.substr(split + 1));
-      site->getSiteFilesDown(sitename).setAll(files);
-    }
-    else if (!setting.compare("maxtransfertimeseconds")) {
-      site->setMaxTransferTimeSeconds(std::stoi(value));
-    }
-    else if (!setting.compare("maxspreadjobtimeseconds")) {
-      site->setMaxSpreadJobTimeSeconds(std::stoi(value));
-    }
-    else if (!setting.compare("freetextb64")) {
-      Core::BinaryData indata(value.begin(), value.end());
-      Core::BinaryData outdata;
-      Crypto::base64Decode(indata, outdata);
-      site->setFreeText(std::string(outdata.begin(), outdata.end()));
-    }
-    else if (!setting.compare("tlsfp")) {
-      site->setTLSFingerprint(value);
-    }
-    else if (!setting.compare("tlsfpver")) {
-      site->setTLSFingerprintVerification(value == "true"|| value == "1");
-    }
-    else if (!setting.compare("tlsfpretry")) {
-      site->setTLSFingerprintAutoRetry(value == "true" || value == "1");
-    }
-    else if (!setting.compare("tlsrequirevalid")) {
-      site->setRequireValidCert(value == "true" || value == "1");
-    }
-    else if (!setting.compare("tlsexpirywarn")) {
-      site->setTLSExpiryWarn(std::stoi(value));
-    }
-    else if (!setting.compare("tlsallowexpired")) {
-      site->setTLSAllowExpired(value == "true" || value == "1");
+    std::map<std::string, std::function<void(Site&, const std::string&)> >::const_iterator handlerit = sitehandlers.find(setting);
+    if (handlerit != sitehandlers.end()) {
+      handlerit->second(*site, value);
     }
   }
   for (std::list<std::pair<std::string, std::string> >::const_iterator it2 = exceptsources.begin(); it2 != exceptsources.end(); it2++) {
