@@ -2,7 +2,9 @@
 
 #include <cstdlib>
 #include <ctime>
+#include <functional>
 #include <list>
+#include <map>
 #include <memory>
 #include <stdexcept>
 
@@ -781,172 +783,175 @@ void updateSite(std::shared_ptr<Site>& site, nlohmann::json jsondata, bool add) 
   for (std::set<std::shared_ptr<Site> >::const_iterator it = site->exceptTargetSitesBegin(); it != site->exceptTargetSitesEnd(); ++it) {
     exceptdstlist.push_back((*it)->getName());
   }
+  std::map<std::string, std::function<void(Site&, const nlohmann::json&)> > sitehandlers;
+  sitehandlers["name"] = [&changedname, add](Site& site, const nlohmann::json& value) {
+    changedname = !add && std::string(value) != site.getName();
+    site.setName(value);
+  };
+  sitehandlers["addresses"] = [](Site& site, const nlohmann::json& value) {
+    std::string addrports;
+    for (nlohmann::json::const_iterator it2 = value.begin(); it2 != value.end(); ++it2) {
+      addrports += std::string(it2.value()) + " ";
+    }
+    site.setAddresses(addrports);
+  };
+  sitehandlers["user"] = [](Site& site, const nlohmann::json& value) {
+    site.setUser(value);
+  };
+  sitehandlers["password"] = [](Site& site, const nlohmann::json& value) {
+    site.setPass(value);
+  };
+  sitehandlers["base_path"] = [](Site& site, const nlohmann::json& value) {
+    site.setBasePath(value);
+  };
+  sitehandlers["max_logins"] = [](Site& site, const nlohmann::json& value) {
+    site.setMaxLogins(value);
+  };
+  sitehandlers["max_sim_up"] = [](Site& site, const nlohmann::json& value) {
+    site.setMaxUp(value);
+  };
+  sitehandlers["max_sim_down"] = [](Site& site, const nlohmann::json& value) {
+    site.setMaxDn(value);
+  };
+  sitehandlers["max_sim_down_pre"] = [](Site& site, const nlohmann::json& value) {
+    site.setMaxDnPre(value);
+  };
+  sitehandlers["max_sim_down_complete"] = [](Site& site, const nlohmann::json& value) {
+    site.setMaxDnComplete(value);
+  };
+  sitehandlers["max_sim_down_transferjob"] = [](Site& site, const nlohmann::json& value) {
+    site.setMaxDnTransferJob(value);
+  };
+  sitehandlers["max_idle_time"] = [](Site& site, const nlohmann::json& value) {
+    site.setMaxIdleTime(value);
+  };
+  sitehandlers["pret"] = [](Site& site, const nlohmann::json& value) {
+    site.setPRET(value);
+  };
+  sitehandlers["force_binary_mode"] = [](Site& site, const nlohmann::json& value) {
+    site.setForceBinaryMode(value);
+  };
+  sitehandlers["list_command"] = [](Site& site, const nlohmann::json& value) {
+    site.setListCommand(stringToListCommand(value));
+  };
+  sitehandlers["tls_mode"] = [](Site& site, const nlohmann::json& value) {
+    site.setTLSMode(stringToTlsMode(value));
+  };
+  sitehandlers["tls_transfer_policy"] = [](Site& site, const nlohmann::json& value) {
+    site.setSSLTransferPolicy(stringToTlsTransferPolicy(value));
+  };
+  sitehandlers["transfer_protocol"] = [](Site& site, const nlohmann::json& value) {
+    site.setTransferProtocol(stringToTransferProtocol(value));
+  };
+  sitehandlers["sscn"] = [](Site& site, const nlohmann::json& value) {
+    site.setSupportsSSCN(value);
+  };
+  sitehandlers["cpsv"] = [](Site& site, const nlohmann::json& value) {
+    site.setSupportsCPSV(value);
+  };
+  sitehandlers["cepr"] = [](Site& site, const nlohmann::json& value) {
+    site.setSupportsCEPR(value);
+  };
+  sitehandlers["broken_pasv"] = [](Site& site, const nlohmann::json& value) {
+    site.setBrokenPASV(value);
+  };
+  sitehandlers["freetextb64"] = [](Site& site, const nlohmann::json& value) {
+    std::string rawdata = value;
+    Core::BinaryData indata(rawdata.begin(), rawdata.end());
+    Core::BinaryData outdata;
+    Crypto::base64Decode(indata, outdata);
+    site.setFreeText(std::string(outdata.begin(), outdata.end()));
+  };
+  sitehandlers["disabled"] = [](Site& site, const nlohmann::json& value) {
+    site.setDisabled(value);
+  };
+  sitehandlers["allow_upload"] = [](Site& site, const nlohmann::json& value) {
+    site.setAllowUpload(stringToSiteAllowTransfer(value));
+  };
+  sitehandlers["allow_download"] = [](Site& site, const nlohmann::json& value) {
+    site.setAllowDownload(stringToSiteAllowTransfer(value));
+  };
+  sitehandlers["priority"] = [](Site& site, const nlohmann::json& value) {
+    site.setPriority(stringToSitePriority(value));
+  };
+  sitehandlers["list_frequency"] = [](Site& site, const nlohmann::json& value) {
+    site.setRefreshRate(stringToRefreshRate(value));
+  };
+  sitehandlers["xdupe"] = [](Site& site, const nlohmann::json& value) {
+    site.setUseXDUPE(value);
+  };
+  sitehandlers["sections"] = [](Site& site, const nlohmann::json& value) {
+    site.clearSections();
+    for (nlohmann::json::const_iterator it2 = value.begin(); it2 != value.end(); ++it2) {
+      std::string sectionpath = it2.value()["path"];
+      if (sectionpath.empty()) {
+        throw std::invalid_argument("Section path must not be empty");
+      }
+      site.addSection(it2.value()["name"], it2.value()["path"]);
+    }
+  };
+  sitehandlers["avg_speed"] = [](Site& site, const nlohmann::json& value) {
+    for (nlohmann::json::const_iterator it2 = value.begin(); it2 != value.end(); ++it2) {
+      site.setAverageSpeed(it2.key(), it2.value());
+    }
+  };
+  sitehandlers["affils"] = [](Site& site, const nlohmann::json& value) {
+    site.clearAffils();
+    for (nlohmann::json::const_iterator it2 = value.begin(); it2 != value.end(); ++it2) {
+      site.addAffil(it2.value());
+    }
+  };
+  sitehandlers["transfer_source_policy"] = [](Site& site, const nlohmann::json& value) {
+    site.setTransferSourcePolicy(stringToTransferPolicy(value));
+  };
+  sitehandlers["transfer_target_policy"] = [](Site& site, const nlohmann::json& value) {
+    site.setTransferTargetPolicy(stringToTransferPolicy(value));
+  };
+  sitehandlers["except_source_sites"] = [&exceptsrclist](Site& site, const nlohmann::json& value) {
+    exceptsrclist.clear();
+    for (nlohmann::json::const_iterator it2 = value.begin(); it2 != value.end(); ++it2) {
+      exceptsrclist.push_back(it2.value());
+    }
+  };
+  sitehandlers["except_target_sites"] = [&exceptdstlist](Site& site, const nlohmann::json& value) {
+    exceptdstlist.clear();
+    for (nlohmann::json::const_iterator it2 = value.begin(); it2 != value.end(); ++it2) {
+      exceptdstlist.push_back(it2.value());
+    }
+  };
+  sitehandlers["leave_free_slot"] = [](Site& site, const nlohmann::json& value) {
+    site.setLeaveFreeSlot(value);
+  };
+  sitehandlers["stay_logged_in"] = [](Site& site, const nlohmann::json& value) {
+    site.setStayLoggedIn(value);
+  };
+  sitehandlers["skiplist"] = [](Site& site, const nlohmann::json& value) {
+    updateSkipList(site.getSkipList(), value);
+  };
+  sitehandlers["proxy_type"] = [](Site& site, const nlohmann::json& value) {
+    site.setProxyType(stringToProxyType(value));
+  };
+  sitehandlers["proxy_name"] = [](Site& site, const nlohmann::json& value) {
+    site.setProxy(value);
+  };
+  sitehandlers["tls_fingerprint_verification"] = [](Site& site, const nlohmann::json& value) {
+    site.setTLSFingerprintVerification(value);
+  };
+  sitehandlers["tls_fingerprint_auto_retry"] = [](Site& site, const nlohmann::json& value) {
+    site.setTLSFingerprintAutoRetry(value);
+  };
+  sitehandlers["tls_allow_expired"] = [](Site& site, const nlohmann::json& value) {
+    site.setTLSAllowExpired(value);
+  };
+  sitehandlers["tls_require_valid_cert"] = [](Site& site, const nlohmann::json& value) {
+    site.setRequireValidCert(value);
+  };
   for (nlohmann::json::const_iterator it = jsondata.begin(); it != jsondata.end(); ++it) {
-    if (it.key() == "name") {
-      changedname = !add && std::string(it.value()) != site->getName();
-      site->setName(it.value());
-    }
-    else if (it.key() == "addresses") {
-      std::string addrports;
-      for (nlohmann::json::const_iterator it2 = it.value().begin(); it2 != it.value().end(); ++it2) {
-        addrports += std::string(it2.value()) + " ";
-      }
-      site->setAddresses(addrports);
-    }
-    else if (it.key() == "user") {
-      site->setUser(it.value());
-    }
-    else if (it.key() == "password") {
-      site->setPass(it.value());
-    }
-    else if (it.key() == "base_path") {
-      site->setBasePath(it.value());
-    }
-    else if (it.key() == "max_logins") {
-      site->setMaxLogins(it.value());
-    }
-    else if (it.key() == "max_sim_up") {
-      site->setMaxUp(it.value());
-    }
-    else if (it.key() == "max_sim_down") {
-      site->setMaxDn(it.value());
-    }
-    else if (it.key() == "max_sim_down_pre") {
-      site->setMaxDnPre(it.value());
-    }
-    else if (it.key() == "max_sim_down_complete") {
-      site->setMaxDnComplete(it.value());
-    }
-    else if (it.key() == "max_sim_down_transferjob") {
-      site->setMaxDnTransferJob(it.value());
-    }
-    else if (it.key() == "max_idle_time") {
-      site->setMaxIdleTime(it.value());
-    }
-    else if (it.key() == "pret") {
-      site->setPRET(it.value());
-    }
-    else if (it.key() == "force_binary_mode") {
-      site->setForceBinaryMode(it.value());
-    }
-    else if (it.key() == "list_command") {
-      site->setListCommand(stringToListCommand(it.value()));
-    }
-    else if (it.key() == "tls_mode") {
-      site->setTLSMode(stringToTlsMode(it.value()));
-    }
-    else if (it.key() == "tls_transfer_policy") {
-      site->setSSLTransferPolicy(stringToTlsTransferPolicy(it.value()));
-    }
-    else if (it.key() == "transfer_protocol") {
-      site->setTransferProtocol(stringToTransferProtocol(it.value()));
-    }
-    else if (it.key() == "sscn") {
-      site->setSupportsSSCN(it.value());
-    }
-    else if (it.key() == "cpsv") {
-      site->setSupportsCPSV(it.value());
-    }
-    else if (it.key() == "cepr") {
-      site->setSupportsCEPR(it.value());
-    }
-    else if (it.key() == "broken_pasv") {
-      site->setBrokenPASV(it.value());
-    }
-    else if (it.key() == "freetextb64") {
-      std::string rawdata = it.value();
-      Core::BinaryData indata(rawdata.begin(), rawdata.end());
-      Core::BinaryData outdata;
-      Crypto::base64Decode(indata, outdata);
-      site->setFreeText(std::string(outdata.begin(), outdata.end()));
-    }
-    else if (it.key() == "disabled") {
-      site->setDisabled(it.value());
-    }
-    else if (it.key() == "allow_upload") {
-      site->setAllowUpload(stringToSiteAllowTransfer(it.value()));
-    }
-    else if (it.key() == "allow_download") {
-      site->setAllowDownload(stringToSiteAllowTransfer(it.value()));
-    }
-    else if (it.key() == "priority") {
-      site->setPriority(stringToSitePriority(it.value()));
-    }
-    else if (it.key() == "list_frequency") {
-      site->setRefreshRate(stringToRefreshRate(it.value()));
-    }
-    else if (it.key() == "xdupe") {
-      site->setUseXDUPE(it.value());
-    }
-    else if (it.key() == "sections") {
-      site->clearSections();
-      for (nlohmann::json::const_iterator it2 = it.value().begin(); it2 != it.value().end(); ++it2) {
-        std::string sectionpath = it2.value()["path"];
-        if (sectionpath.empty()) {
-          throw std::invalid_argument("Section path must not be empty");
-        }
-        site->addSection(it2.value()["name"], it2.value()["path"]);
-      }
-    }
-    else if (it.key() == "avg_speed") {
-      for (nlohmann::json::const_iterator it2 = it.value().begin(); it2 != it.value().end(); ++it2) {
-        site->setAverageSpeed(it2.key(), it2.value());
-      }
-    }
-    else if (it.key() == "affils") {
-      site->clearAffils();
-      for (nlohmann::json::const_iterator it2 = it.value().begin(); it2 != it.value().end(); ++it2) {
-        site->addAffil(it2.value());
-      }
-    }
-    else if (it.key() == "transfer_source_policy") {
-      site->setTransferSourcePolicy(stringToTransferPolicy(it.value()));
-    }
-    else if (it.key() == "transfer_target_policy") {
-      site->setTransferTargetPolicy(stringToTransferPolicy(it.value()));
-    }
-    else if (it.key() == "except_source_sites") {
-      exceptsrclist.clear();
-      for (nlohmann::json::const_iterator it2 = it.value().begin(); it2 != it.value().end(); ++it2) {
-        exceptsrclist.push_back(it2.value());
-      }
-    }
-    else if (it.key() == "except_target_sites") {
-      exceptdstlist.clear();
-      for (nlohmann::json::const_iterator it2 = it.value().begin(); it2 != it.value().end(); ++it2) {
-        exceptdstlist.push_back(it2.value());
-      }
-    }
-    else if (it.key() == "leave_free_slot") {
-      site->setLeaveFreeSlot(it.value());
-    }
-    else if (it.key() == "stay_logged_in") {
-      site->setStayLoggedIn(it.value());
-    }
-    else if (it.key() == "skiplist") {
-      updateSkipList(site->getSkipList(), it.value());
-    }
-    else if (it.key() == "proxy_type") {
-      site->setProxyType(stringToProxyType(it.value()));
-    }
-    else if (it.key() == "proxy_name") {
-      site->setProxy(it.value());
-    }
-    else if (it.key() == "tls_fingerprint_verification") {
-      site->setTLSFingerprintVerification(it.value());
-    }
-    else if (it.key() == "tls_fingerprint_auto_retry") {
-      site->setTLSFingerprintAutoRetry(it.value());
-    }
-    else if (it.key() == "tls_allow_expired") {
-      site->setTLSAllowExpired(it.value());
-    }
-    else if (it.key() == "tls_require_valid_cert") {
-      site->setRequireValidCert(it.value());
-    }
-    else {
+    std::map<std::string, std::function<void(Site&, const nlohmann::json&)> >::const_iterator handlerit = sitehandlers.find(it.key());
+    if (handlerit == sitehandlers.end()) {
       throw std::range_error("Unrecognized key: " + it.key());
     }
+    handlerit->second(*site, it.value());
   }
   if (add) {
     global->getSiteManager()->addSite(site);
